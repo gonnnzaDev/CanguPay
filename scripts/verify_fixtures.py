@@ -141,11 +141,16 @@ def main():
             "report": report,
         }
 
-        # Si existe dispute-evidence.json, hashear por separado
+        # Si existe dispute-evidence.json, hashear por separado y generar reason_hash
         ev = FIXTURES / name / "dispute-evidence.json"
         if ev.exists():
             dispute_doc = json.loads(ev.read_text(encoding="utf-8"))
             manifest[name]["dispute_evidence_hash"] = sha_hex(dispute_doc)
+            
+            # Generar reason_hash del campo "reason" si existe
+            if "reason" in dispute_doc and isinstance(dispute_doc["reason"], str):
+                reason_hash = sha_hex({"reason": dispute_doc["reason"]})
+                manifest[name]["reason_hash"] = reason_hash
 
     MANIFEST.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -158,6 +163,8 @@ def main():
         print(f"  checks               = {data['checks']}")
         if "dispute_evidence_hash" in data:
             print(f"  dispute_evidence_hash= {data['dispute_evidence_hash']}")
+        if "reason_hash" in data:
+            print(f"  reason_hash          = {data['reason_hash']}")
         print()
 
     # Validación de integridad interna
@@ -169,6 +176,11 @@ def main():
         sys.exit(1)
     if manifest["dispute"]["result"] != "PASS":
         print("ERROR: el fixture DISPUTE debe reproducir PASS del bundle atestiguado", file=sys.stderr)
+        sys.exit(1)
+    
+    # Validar que dispute tenga reason_hash
+    if "reason_hash" not in manifest["dispute"]:
+        print("ERROR: el fixture DISPUTE debe tener reason_hash", file=sys.stderr)
         sys.exit(1)
 
     print("OK — manifest coherente con ruleset v1.0.0")

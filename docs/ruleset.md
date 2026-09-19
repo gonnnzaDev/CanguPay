@@ -54,15 +54,16 @@ Reporte esperado PASS (el hash concreto figura en el manifest):
 }
 ```
 
-## Casos de aceptación
+
+### Casos de aceptación
 
 | Caso | Evidencia | Valor contractual supuesto | Resultado esperado | Efecto permitido |
-|---|---|---:|---|---|
-| PASS | `fixtures/pass/` | 10000000000 | Todos los checks `MATCH`; `PASS` | Engine atestigua; buyer aprueba o vence objeción y alguien llama `finalize()` |
-| FAIL | `fixtures/fail/` | 10000000000 | Solo `amount=MISMATCH`; `FAIL` (factura 9000000000) | Supplier corrige una vez, disputa durante plazo o recibe refund por `finalize()` |
-| DISPUTE | `fixtures/dispute/dispute-evidence.json` tras FAIL | 10000000000 | **No** reescribe el FAIL ni dispara un PASS | Supplier abre su única disputa y resolver humano valora la evidencia nueva; fallback si no resuelve |
+|------|-----------|---------------------------|-------------------|------------------|
+| PASS | fixtures/pass/ | 10000000000 | Todos los checks MATCH; PASS | Engine atestigua; buyer aprueba o vence objeción y alguien llama finalize() |
+| FAIL | fixtures/fail/ | 10000000000 | Solo amount=MISMATCH; FAIL (factura 9000000000) | Supplier corrige una vez, disputa durante plazo o recibe refund por finalize() |
+| DISPUTE | fixtures/dispute/dispute-evidence.json tras PASS | 10000000000 | No reescribe el PASS ni dispara un FAIL | Buyer abre su única disputa y resolver humano valora la evidencia nueva; fallback si no resuelve |
 
-La nueva factura de DISPUTE es una alegación sintética del proveedor. Su presencia no demuestra autenticidad ni que el buyer aceptó un cambio; la decisión sigue siendo humana. `PASS`/`FAIL` indican coincidencia de campos y constancia marcada como aceptada en la muestra, no prueba legal de entrega.
+La nueva factura de DISPUTE es una alegación sintética del comprador. Su presencia no demuestra autenticidad ni que el supplier aceptó un cambio; la decisión sigue siendo humana. PASS/FAIL indican coincidencia de campos y constancia marcada como aceptada en la muestra, no prueba legal de entrega.
 
 ## Pendientes de interfaz para P0-00
 

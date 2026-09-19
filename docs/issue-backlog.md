@@ -249,4 +249,12 @@ Fuente: https://github.com/gonnnzaDev/CanguPay/issues · Registro de decisión: 
 5. `docs/decision-log.md` con D-001/D-002 confirmadas y decisiones de interfaz abiertas.
 6. `fixtures/manifest.json` y `scripts/verify_fixtures.py` para verificar hashes y resultados de ambas muestras.
 
-**Bloqueo para publicar issues desde este entorno:** GitHub no está conectado como aplicación. El repositorio es público y puede leerse, pero eso no da permiso de escritura ni permite asignar issues. Este archivo contiene tareas listas para publicar; no equivale a issues creados.
+## Estado actual (19-09-2026)
+
+Los 13 issues P0 fueron creados manualmente en GitHub con dueños y labels asignados:
+
+- **Issues:** #2 (P0-00) a #14 (P0-12)
+- **Labels creados:** P0, P1, bloqueado, demo
+- **Repositorio:** https://github.com/gonnnzaDev/CanguPay/issues
+
+Ver mapeo detallado en la sección "Mapeo publicado" arriba.
