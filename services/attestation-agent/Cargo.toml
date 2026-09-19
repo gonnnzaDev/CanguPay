@@ -1,0 +1,7 @@
+[package]
+name = "attestation-agent"
+version = "0.1.0"
+edition = "2021"
+
+# Servicio de agente de attestation
+# Manejo de requests y responses de attestation para CanguPay
