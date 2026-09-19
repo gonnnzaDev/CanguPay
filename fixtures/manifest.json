@@ -1,0 +1,82 @@
+{
+  "dispute": {
+    "checks": {
+      "amount": "MATCH",
+      "currency": "MATCH",
+      "delivery": "MATCH",
+      "purchase_order": "MATCH",
+      "supplier": "MATCH"
+    },
+    "dispute_evidence_hash": "8255ca1e7d92f0830f41d94ab05b1492b215d9184c53583d93bee1cddbb25d38",
+    "escrow_amount": 10000000000,
+    "escrow_token_code": "CPUSD",
+    "evidence_bundle_hash": "47d3768427e829e7059bae3b010d5ffef326356acc819d544ddfba7371b2916e",
+    "reason_hash": "3a9d192034346d4285b3ac74e25f24bb1b544062744e2e0c262d2a8ea86980df",
+    "report": {
+      "checks": {
+        "amount": "MATCH",
+        "currency": "MATCH",
+        "delivery": "MATCH",
+        "purchase_order": "MATCH",
+        "supplier": "MATCH"
+      },
+      "evidence_bundle_hash": "47d3768427e829e7059bae3b010d5ffef326356acc819d544ddfba7371b2916e",
+      "result": "PASS",
+      "ruleset_version": "1.0.0"
+    },
+    "report_hash": "2a1b2c77ded90ae77419bea4cff7315de7c61de7601f700d9e5163b2697eeeb4",
+    "result": "PASS"
+  },
+  "fail": {
+    "checks": {
+      "amount": "MISMATCH",
+      "currency": "MATCH",
+      "delivery": "MATCH",
+      "purchase_order": "MATCH",
+      "supplier": "MATCH"
+    },
+    "escrow_amount": 10000000000,
+    "escrow_token_code": "CPUSD",
+    "evidence_bundle_hash": "681739a3e1551df1d34a017b45d7e0a820450f2e01d6428696184d58d96eab89",
+    "report": {
+      "checks": {
+        "amount": "MISMATCH",
+        "currency": "MATCH",
+        "delivery": "MATCH",
+        "purchase_order": "MATCH",
+        "supplier": "MATCH"
+      },
+      "evidence_bundle_hash": "681739a3e1551df1d34a017b45d7e0a820450f2e01d6428696184d58d96eab89",
+      "result": "FAIL",
+      "ruleset_version": "1.0.0"
+    },
+    "report_hash": "0589faf3d74913064b09aa783367e13360f171e4941a020f0e292dc22ccbb5b5",
+    "result": "FAIL"
+  },
+  "pass": {
+    "checks": {
+      "amount": "MATCH",
+      "currency": "MATCH",
+      "delivery": "MATCH",
+      "purchase_order": "MATCH",
+      "supplier": "MATCH"
+    },
+    "escrow_amount": 10000000000,
+    "escrow_token_code": "CPUSD",
+    "evidence_bundle_hash": "30769de97d31e15d8253f695d6440e38511f44c64173126bb26f3b46183a6326",
+    "report": {
+      "checks": {
+        "amount": "MATCH",
+        "currency": "MATCH",
+        "delivery": "MATCH",
+        "purchase_order": "MATCH",
+        "supplier": "MATCH"
+      },
+      "evidence_bundle_hash": "30769de97d31e15d8253f695d6440e38511f44c64173126bb26f3b46183a6326",
+      "result": "PASS",
+      "ruleset_version": "1.0.0"
+    },
+    "report_hash": "119a3296591e55a41b5ec0a06d79d15b7aedb26458a8a31e3ad2b5104d38d15c",
+    "result": "PASS"
+  }
+}

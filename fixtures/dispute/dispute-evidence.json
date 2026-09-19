@@ -1,0 +1,7 @@
+{
+  "raised_by": "buyer",
+  "reason": "Entrega parcial: solo 8 de 10 bultos conformes según acta de recepción",
+  "evidence_id": "EV-D-001",
+  "attestation_being_disputed": "PASS",
+  "notes": "Este archivo se registra por separado del bundle atestiguado; su hash se envía como dispute_evidence_hash en raise_dispute()"
+}

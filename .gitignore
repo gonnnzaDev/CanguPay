@@ -1,0 +1,14 @@
+/.env
+/.env.*
+!/.env.example
+**/.env
+**/.env.*
+!**/.env.example
+**/target/
+**/node_modules/
+**/.next/
+**/__pycache__/
+**/.venv/
+*.pem
+*.key
+*.seed

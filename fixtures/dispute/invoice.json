@@ -1,0 +1,7 @@
+{
+  "id": "INV-003",
+  "purchase_order_id": "PO-003",
+  "supplier_id": "SUP-001",
+  "amount": 10000000000,
+  "currency": "CPUSD"
+}

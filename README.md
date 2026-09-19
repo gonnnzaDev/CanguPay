@@ -1,4 +1,4 @@
-# CumplePago
+# CanguPay
 
 **Pago B2B condicionado sobre Stellar.**
 
@@ -6,7 +6,7 @@ El comprador reserva fondos en Stellar, el proveedor presenta la evidencia acord
 
 > *El agente informa; el contrato ejecuta; el humano resuelve controversias.*
 
-> Nombre provisional, pendiente del chequeo de disponibilidad (ver `docs/decision-log.md`).
+> Nombre elegido por el equipo; el chequeo de marca y dominio sigue pendiente (ver `docs/decision-log.md`).
 
 ## ⚠️ Declaraciones
 
@@ -18,7 +18,7 @@ El comprador reserva fondos en Stellar, el proveedor presenta la evidencia acord
 
 ## Problema
 
-En una primera operación entre un proveedor pequeño y un comprador nuevo, el proveedor no quiere entregar sin saber si hay fondos, y el comprador no quiere pagar sin comprobar la entrega. CumplePago se enfoca en esa confianza previa y en ejecutar condiciones pactadas, no en resolver la morosidad en general.
+En una primera operación entre un proveedor pequeño y un comprador nuevo, el proveedor no quiere entregar sin saber si hay fondos, y el comprador no quiere pagar sin comprobar la entrega. CanguPay se enfoca en esa confianza previa y en ejecutar condiciones pactadas, no en resolver la morosidad en general.
 
 ## Cómo funciona
 
@@ -51,11 +51,11 @@ Los roles deben ser cuentas distintas entre sí.
 | Componente | Tecnología |
 |---|---|
 | Contrato | Rust / Soroban (una instancia por operación) |
-| Agente + keeper | FastAPI / Python |
-| Frontend | Next.js / TypeScript + Freighter |
+| Agente + keeper | Por acordar en P0-00; actualmente hay un stub Rust y un verificador Python local |
+| Frontend | Por acordar en P0-00; Freighter es requisito para la demo |
 | Activo | CPUSD en testnet vía Stellar Asset Contract |
 
-El tiempo lo decide siempre `env.ledger().timestamp()`, nunca el reloj del navegador.
+El tiempo lo decide siempre `env.ledger().timestamp()`, nunca el reloj del navegador. El contrato, el agente on-chain y la interfaz todavía no implementan el flujo descrito.
 
 ## Estructura
 
@@ -72,11 +72,7 @@ docs/                            # spec, decisiones, demos
 
 > 🚧 Los comandos se documentan a medida que se verifican en testnet.
 
-```bash
-cp .env.example .env                     # nunca commitear secrets
-cd contracts/conditional-payment && cargo test
-# TODO: deploy del contrato, setup del activo, agente y frontend
-```
+El equipo debe configurar el workspace y verificar comandos reales de build, test y deploy en P0-00. Para comprobar los fixtures sintéticos localmente: `python3 scripts/verify_fixtures.py`.
 
 Usá **tres perfiles de navegador** con Freighter (buyer, supplier, resolver) para no firmar con el rol equivocado.
 
