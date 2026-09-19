@@ -1,0 +1,110 @@
+# CumplePago
+
+**Pago B2B condicionado sobre Stellar.**
+
+El comprador reserva fondos en Stellar, el proveedor presenta la evidencia acordada, un agente verifica reglas documentales y un contrato Soroban libera, devuelve o divide los fondos según condiciones pactadas de antemano.
+
+> *El agente informa; el contrato ejecuta; el humano resuelve controversias.*
+
+> Nombre provisional, pendiente del chequeo de disponibilidad (ver `docs/decision-log.md`).
+
+## ⚠️ Declaraciones
+
+- **CPUSD es un activo sintético de testnet utilizado exclusivamente para demostrar el flujo. No representa USDC ni tiene respaldo en dólares.** USDC en mainnet queda en el roadmap.
+- **Doble participación:** una misma solución base compite en Stellar Odyssey Perú (Track 01 — AI Agents & Automated Workflows) y en Argentina Builder Challenge (Genesis — Pagos). Ambas participaciones están declaradas.
+- **Khipu** es aprendizaje previo del equipo. Este repositorio es nuevo y no reutiliza código, fixtures ni archivos de Khipu.
+- **Sin validación comercial:** es un prototipo basado en experiencia operativa, investigación secundaria e hipótesis explícitas.
+- Todos los documentos de la demo son **sintéticos**. No es asesoría legal, ni producción, ni factoring, ni RWA.
+
+## Problema
+
+En una primera operación entre un proveedor pequeño y un comprador nuevo, el proveedor no quiere entregar sin saber si hay fondos, y el comprador no quiere pagar sin comprobar la entrega. CumplePago se enfoca en esa confianza previa y en ejecutar condiciones pactadas, no en resolver la morosidad en general.
+
+## Cómo funciona
+
+1. **Crear:** el comprador define proveedor, resolver, monto, plazos y fallback. Puede cancelar antes de fondear.
+2. **Fondear:** deposita CPUSD en el contrato.
+3. **Evidencia:** el proveedor envía el hash del bundle de evidencia.
+4. **Atestación:** el agente aplica reglas deterministas y atestigua **PASS** o **FAIL**.
+5. **PASS:** el comprador aprueba, disputa, o guarda silencio (se libera al vencer el plazo).
+6. **FAIL:** el proveedor corrige (una vez), disputa, o vence el plazo y se reembolsa.
+7. **Disputa** (una sola): un *resolver* humano decide `RELEASE`, `REFUND` o `SPLIT`. Si no actúa, se aplica el fallback preacordado.
+
+Todos los vencimientos los ejecuta `finalize()`, una función pública e idempotente que cualquier cuenta puede invocar. Ningún silencio deja los fondos atrapados.
+
+**Estados terminales:** `CANCELLED`, `RELEASED`, `REFUNDED`, `SPLIT`.
+
+## Actores
+
+| Actor | Rol |
+|---|---|
+| Buyer | Crea, fondea, aprueba o disputa un PASS |
+| Supplier | Presenta evidencia, corrige o disputa un FAIL |
+| Engine | Atestigua PASS/FAIL; no mueve fondos |
+| Resolver | Decide solo si hay disputa |
+| Keeper | Cualquier cuenta que llame a `finalize()` |
+
+Los roles deben ser cuentas distintas entre sí.
+
+## Arquitectura
+
+| Componente | Tecnología |
+|---|---|
+| Contrato | Rust / Soroban (una instancia por operación) |
+| Agente + keeper | FastAPI / Python |
+| Frontend | Next.js / TypeScript + Freighter |
+| Activo | CPUSD en testnet vía Stellar Asset Contract |
+
+El tiempo lo decide siempre `env.ledger().timestamp()`, nunca el reloj del navegador.
+
+## Estructura
+
+```
+contracts/conditional-payment/   # contrato Soroban
+apps/web/                        # frontend
+services/attestation-agent/      # agente y keeper
+fixtures/{pass,fail,dispute}/    # evidencia sintética
+scripts/{setup-testnet,demo}/
+docs/                            # spec, decisiones, demos
+```
+
+## Puesta en marcha
+
+> 🚧 Los comandos se documentan a medida que se verifican en testnet.
+
+```bash
+cp .env.example .env                     # nunca commitear secrets
+cd contracts/conditional-payment && cargo test
+# TODO: deploy del contrato, setup del activo, agente y frontend
+```
+
+Usá **tres perfiles de navegador** con Freighter (buyer, supplier, resolver) para no firmar con el rol equivocado.
+
+## Demos
+
+1. **PASS + vencimiento** (principal): el comprador no objeta, cualquiera ejecuta `finalize()` y el proveedor cobra.
+2. **Ghost supplier** (respaldo): el proveedor desaparece y el comprador recupera los fondos.
+3. **Disputa + split 70/30:** el resolver decide y el contrato distribuye exactamente.
+
+Las demos usan plazos abreviados. Ver `docs/demo-scenarios.md`.
+
+## Limitaciones
+
+- Engine centralizado (una sola clave). En producción requeriría quórum o engines redundantes.
+- Resolver único; issuer centralizado en testnet.
+- Sin fees, KYC/AML ni off-ramp.
+- Los vencimientos no son automáticos: alguien debe invocar `finalize()`.
+
+## Alcance
+
+**P0:** flujo completo en testnet (contrato, agente determinista, frontend, tests, video).
+**P1:** IA/OCR, múltiples hitos, engine redundante, segundo resolver, fees, factory multi-escrow.
+**Fuera:** factoring, RWA, yield, préstamos, KYC, ERP, mainnet.
+
+## Equipo
+
+**Gonza** (contrato y testnet) · **Julián** (frontend e integración) · **Linder** (producto, agente, evidencia y presentación)
+
+## Licencia
+
+Ver `LICENSE` *(TODO: definir antes de publicar)*.
