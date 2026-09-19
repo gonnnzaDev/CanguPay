@@ -33,13 +33,14 @@ Si el JSON no se puede decodificar, hay claves duplicadas, el bundle no es un ob
 
 ## Hashes y reporte reproducible
 
-La representación canónica de P0 es JSON UTF-8 con claves ordenadas alfabéticamente en cada objeto, sin espacios prescindibles, sin BOM, sin saltos de línea, sin claves duplicadas y sin números decimales. Los campos string de este esquema son ASCII. Esta restricción evita divergencias entre serializadores; ampliar el esquema exige acordar una canonicalización interoperable como JCS. `SHA-256` produce 32 bytes; intercambiarlos como 64 dígitos hexadecimales minúsculos en documentos y como `BytesN<32>` al llamar al contrato.
+La representación canónica de P0 es JSON UTF-8 con claves ordenadas alfabéticamente en cada objeto, sin espacios prescindibles, sin BOM, sin saltos de línea, sin claves duplicadas y sin números decimales. Los identificadores y códigos del bundle son ASCII; el texto libre `reason` de la disputa puede contener Unicode. Esta restricción del bundle evita divergencias entre serializadores; ampliar el esquema exige acordar una canonicalización interoperable como JCS. `SHA-256` produce 32 bytes; intercambiarlos como 64 dígitos hexadecimales minúsculos en documentos y como `BytesN<32>` al llamar al contrato.
 
 - `evidence_bundle_hash = SHA-256(canonical_json({purchase_order,invoice,delivery}))`.
 - `report_hash = SHA-256(canonical_json(report))`.
 - El reporte contiene exactamente `ruleset_version`, `result`, `checks` y `evidence_bundle_hash`, sin `generated_at`, hora local, nombres de archivos ni datos privados. Si se necesita hora, mostrar la del evento on-chain separadamente.
 - Los cinco checks se llaman `supplier`, `purchase_order`, `amount`, `currency` y `delivery`.
 - `dispute-evidence.json` se calcula y presenta por separado; nunca se agrega a posteriori al hash del bundle ya atestiguado.
+- Según el script actual: `reason_hash = SHA-256(canonical_json({"reason": texto_de_reason}))` y `dispute_evidence_hash = SHA-256(canonical_json(dispute-evidence.json))`. Estos son **dos hashes distintos**; Gonza y Julián deben usar exactamente los mismos bytes al invocar `raise_dispute(reason_hash, dispute_evidence_hash)`.
 
 `fixtures/manifest.json` contiene hashes de referencia calculados con `python3 scripts/verify_fixtures.py`. Es una herramienta de comprobación local: todavía no firma ni envía transacciones.
 
@@ -63,7 +64,7 @@ Reporte esperado PASS (el hash concreto figura en el manifest):
 | FAIL | fixtures/fail/ | 10000000000 | Solo amount=MISMATCH; FAIL (factura 9000000000) | Supplier corrige una vez, disputa durante plazo o recibe refund por finalize() |
 | DISPUTE | fixtures/dispute/dispute-evidence.json tras PASS | 10000000000 | No reescribe el PASS ni dispara un FAIL | Buyer abre su única disputa y resolver humano valora la evidencia nueva; fallback si no resuelve |
 
-La nueva factura de DISPUTE es una alegación sintética del comprador. Su presencia no demuestra autenticidad ni que el supplier aceptó un cambio; la decisión sigue siendo humana. PASS/FAIL indican coincidencia de campos y constancia marcada como aceptada en la muestra, no prueba legal de entrega.
+En DISPUTE, el comprador alega que solo 8 de 10 bultos llegaron conformes. `dispute-evidence.json` recoge **esa alegación sintética**, sin adjuntar un acta independiente que la pruebe. El PASS previo no cambia automáticamente: decide el resolver humano. `fixtures/dispute/` contiene `PO-003`, diferente de `fixtures/pass/` (`PO-001`); ambos bundles obtienen PASS. PASS/FAIL indican coincidencia de campos y constancia marcada como aceptada en la muestra, no prueba legal de entrega.
 
 ## Pendientes de interfaz para P0-00
 

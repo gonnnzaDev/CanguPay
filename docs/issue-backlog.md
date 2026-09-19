@@ -5,7 +5,7 @@
 **Fuente de verdad:** acuerdo P0 del equipo y `docs/decision-log.md`, `docs/state-machine.md` y `docs/ruleset.md`; la especificación larga previa aún no se incorporó al repositorio.
 **Uso:** crear un issue por bloque y asignar a la cuenta GitHub real de su dueño. Las siglas son referencias internas; los números `#` los asigna GitHub. No se asumen handles.
 
-**Estado del repositorio al revisarlo:** los cinco documentos `docs/` originales eran archivos vacíos; `README.md` conservaba el nombre CumplePago; los archivos Rust del contrato, agente y web contenían solo comentarios; `Cargo.toml` raíz declara un paquete sin `src/` ni miembros workspace. Existía un solo issue de prueba **cerrado** (`#1`); ningún issue P0 estaba publicado. Este backlog se adaptó a esos hechos. Los fixtures, ruleset, decision log, máquina de estados, verificador local y nombre corregido están preparados en la rama local `codex/cangupay-p0-linder`, pendientes de revisión/publicación.
+**Estado actual:** los 13 issues P0 `#2`–`#14` están publicados y asignados. El [PR #15](https://github.com/gonnnzaDev/CanguPay/pull/15) incluye los fixtures, el verificador local, las reglas y la máquina de estados; aún requiere revisión e integración a `main`. Contrato, agente on-chain y web siguen sin implementación funcional. Stack y ABI siguen pendientes en P0-00.
 
 ## Configuración en cinco minutos
 
@@ -132,7 +132,7 @@
 
 **Dueño:** Linder. **Labels:** `P0`. **Depende de:** ninguno.
 
-**Objetivo:** revisar y publicar los fixtures `pass`, `fail`, `dispute`, `fixtures/manifest.json`, `docs/ruleset.md` y el verificador local `scripts/verify_fixtures.py` ya preparados en la rama local; ratificar la precisión del activo y los hashes con Gonza y Julián.
+**Objetivo:** revisar los fixtures `pass`, `fail`, `dispute`, `fixtures/manifest.json`, `docs/ruleset.md` y el verificador local `scripts/verify_fixtures.py` del PR #15; ratificar la precisión del activo y los hashes con Gonza y Julián antes de cerrar el issue.
 
 **Terminado cuando:**
 

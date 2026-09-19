@@ -26,6 +26,8 @@ Las entradas **confirmadas** reflejan lo acordado para el prototipo. Las decisio
 
 **Propuesta de Linder:** objetos JSON de `fixtures/`, `amount` entero en unidades mínimas CPUSD (10⁻⁷); canonicalización y hashes en `docs/ruleset.md`. Las tres piezas del bundle se hashean juntas; la disputa se registra por separado. Gonza verifica precisión SAC y representación `BytesN<32>`; Julián confirma cómo la UI construye exactamente el mismo bundle.
 
+**Fixture de la demo 3:** `PO-003` obtiene PASS; luego el buyer cuestiona la entrega parcial. La objeción es una alegación sintética y no modifica automáticamente la atestación. Esta demo sigue el camino `ATTESTED_PASS → DISPUTED → SPLIT`.
+
 ## D-005 · Backlog P0 publicado en GitHub — 19-09-2026
 Estado: confirmado por Linder tras crear los 13 issues manualmente.
 Decisión: publicar el backlog P0 con dueño y label en https://github.com/gonnnzaDev/CanguPay/issues y crear los labels `P0`, `P1`, `bloqueado` y `demo`. Los números `#` los asigna GitHub; los códigos internos se mantienen como referencia de equipo. Mapeo real:

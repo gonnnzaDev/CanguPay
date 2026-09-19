@@ -11,6 +11,7 @@
     "escrow_amount": 10000000000,
     "escrow_token_code": "CPUSD",
     "evidence_bundle_hash": "47d3768427e829e7059bae3b010d5ffef326356acc819d544ddfba7371b2916e",
+    "reason_hash": "3a9d192034346d4285b3ac74e25f24bb1b544062744e2e0c262d2a8ea86980df",
     "report": {
       "checks": {
         "amount": "MATCH",
