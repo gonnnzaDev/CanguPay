@@ -48,6 +48,14 @@ Decisión: publicar el backlog P0 con dueño y label en https://github.com/gonnn
 | P0-12 | #14 |
 Reglas derivadas: todo PR escribe `Closes #N` con el número de esta tabla; si un issue se cierra y se recrea, se actualiza esta tabla el mismo día; el tablero Projects es opcional y no condiciona el desarrollo.
 
+## D-006 · Chequeo preliminar de nombre CanguPay — 19-09-2026
+Estado: confirmado por Linder.
+Fuentes consultadas: [lista real: búsqueda general, GitHub, dominios, redes, INDECOPI/INPI si aplicaste]
+Coincidencias encontradas: ninguna confundible en las fuentes consultadas.
+Riesgo: [bajo/medio/alto según lo observado]
+Decisión: mantener CanguPay como nombre de trabajo para la hackatón.
+Aclaración: chequeo preliminar; no equivale a clearance legal de marca en Perú ni Argentina.
+
 ## Registro de cambios
 
 | Fecha | Decisión | Responsable | Efecto |
