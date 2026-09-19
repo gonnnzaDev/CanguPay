@@ -1,0 +1,7 @@
+[package]
+name = "cangu-pay"
+version = "0.1.0"
+edition = "2021"
+
+# Workspace root para el proyecto CanguPay
+# Define members del proyecto Rust
