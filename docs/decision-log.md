@@ -56,6 +56,28 @@ Riesgo: [bajo/medio/alto según lo observado]
 Decisión: mantener CanguPay como nombre de trabajo para la hackatón.
 Aclaración: chequeo preliminar; no equivale a clearance legal de marca en Perú ni Argentina.
 
+## D-007 · Stack del agente y lectura on-chain — 19-09-2026
+Estado: confirmado por Gonza y Julián.
+
+Decisiones:
+1. **Stack del agente:** Rust (no Python). Motivo: coherencia con el ecosistema Soroban, performance, y aprovechamiento de experiencia en Stellar SDK. Los stubs de `services/attestation-agent/src/` se implementan, no se eliminan.
+2. **Lectura on-chain:** Stellar RPC (`getLedgerEntries`/`getContractData`), no Horizon.
+3. **Obtención de datos por el agente:** flujo híbrido:
+   - El supplier envía el bundle (documentos reales) al agente
+   - El agente calcula el hash del bundle recibido
+   - El agente lee el contrato vía RPC para obtener `evidence_bundle_hash`, `amount`, `token`
+   - Compara hashes: si no coinciden, rechaza; si coinciden, evalúa y firma `attest()`
+4. **Función requerida en el contrato:** `get_escrow()` que retorne `EscrowInfo` con todos los campos necesarios (read-only, sin auth).
+
+Impacto:
+- El motor de reglas Python de P0-07 etapa 1 sirve como referencia de reglas y tests (29 tests verdes, oráculo contra manifest).
+- La implementación final del agente será Rust (P0-07 etapa 2).
+- Linder adapta la etapa 2 cuando Gonza cierre P0-00.
+
+Pendiente:
+- Gonza implementa `get_escrow()` en el contrato
+- Gonza y Julián definen la integración exacta (CLI vs servicio HTTP) y la documentan en `architecture.md`
+
 ## Registro de cambios
 
 | Fecha | Decisión | Responsable | Efecto |
