@@ -51,7 +51,7 @@ pub enum Error {
     InvalidAmount = 3,
     InvalidSubmissionPeriod = 4,
     InvalidState = 5,
-    FundsNotExact = 6,
     SubmissionDeadlinePassed = 7,
     AlreadyApproved = 8,
+    NothingToRecover = 9,
 }

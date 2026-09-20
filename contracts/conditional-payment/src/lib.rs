@@ -4,10 +4,13 @@
 //! Alcance P0-02: camino `CREATED → FUNDED → EVIDENCE_SUBMITTED →
 //! ATTESTED_PASS → RELEASED` y `CREATED → CANCELLED`, con auth y eventos.
 //!
-//! El fondeo es de dos pasos: el buyer transfiere CPUSD (SAC) al contrato y
-//! luego invoca `fund()`, que lee el saldo propio y exige exactamente
-//! `amount`. El resto de vencimientos y estados (finalize, corrección,
-//! disputa, fallback) se incorporan en P0-03/P0-04.
+//! El fondeo es un pull atómico: `fund()` transfiere `amount` desde el buyer
+//! al contrato y actualiza el estado en la misma operación lógica. Si el pull
+//! falla, la operación no queda parcialmente fondeada. Los saldos enviados
+//! por error antes del fondeo los puede recuperar el buyer con `recover()`;
+//! después del fondeo, los envíos directos quedan fuera del settlement como
+//! limitación conocida. El resto de vencimientos y estados (finalize,
+//! corrección, disputa, fallback) se incorporan en P0-03/P0-04.
 
 #![no_std]
 
@@ -20,7 +23,9 @@ use soroban_sdk::{
     contract, contractimpl, panic_with_error, token::TokenClient, BytesN, Env,
 };
 
-use crate::events::{Approved, Attested, Cancelled, EscrowCreated, EvidenceSubmitted, Funded};
+use crate::events::{
+    Approved, Attested, Cancelled, EscrowCreated, EvidenceSubmitted, Funded, Recovered,
+};
 use crate::types::{DataKey, Error};
 
 fn read_config(env: &Env) -> EscrowConfig {
@@ -40,8 +45,10 @@ pub struct ConditionalPayment;
 
 #[contractimpl]
 impl ConditionalPayment {
-    /// Crea la operación. Solo se puede llamar una vez.
+    /// Crea la operación. Solo el buyer puede crearla, y solo una vez: nadie
+    /// puede abrir una operación nombrando a un buyer que no la autorizó.
     pub fn initialize(env: Env, config: EscrowConfig) {
+        config.buyer.require_auth();
         if env.storage().instance().has(&DataKey::Config) {
             panic_with_error!(&env, Error::AlreadyInitialized);
         }
@@ -78,8 +85,10 @@ impl ConditionalPayment {
         Cancelled { by: config.buyer }.publish(&env);
     }
 
-    /// Fondea la operación. El buyer transfiere CPUSD al contrato y luego lo
-    /// registra aquí: el saldo del contrato debe ser exactamente `amount`.
+    /// Fondea la operación con un pull atómico: transfiere `amount` desde el
+    /// buyer al contrato y pasa a `FUNDED` en la misma operación lógica. Si
+    /// el pull falla (p. ej. saldo insuficiente), la llamada revierte
+    /// completa y la operación no queda parcialmente fondeada.
     pub fn fund(env: Env) {
         let config = read_config(&env);
         config.buyer.require_auth();
@@ -88,10 +97,7 @@ impl ConditionalPayment {
         }
 
         let current = env.current_contract_address();
-        let balance = TokenClient::new(&env, &config.token).balance(&current);
-        if balance != config.amount {
-            panic_with_error!(&env, Error::FundsNotExact);
-        }
+        TokenClient::new(&env, &config.token).transfer(&config.buyer, &current, &config.amount);
 
         let now = env.ledger().timestamp();
         let submission_deadline = now
@@ -183,6 +189,30 @@ impl ConditionalPayment {
         Approved {
             to: config.supplier,
             amount: config.amount,
+        }
+        .publish(&env);
+    }
+
+    /// El buyer recupera saldos enviados por error al contrato mientras la
+    /// operación sigue en `CREATED` (antes del fondeo). Después del fondeo,
+    /// los envíos directos quedan fuera del settlement (limitación conocida).
+    pub fn recover(env: Env) {
+        let config = read_config(&env);
+        config.buyer.require_auth();
+        if read_state(&env) != EscrowState::Created {
+            panic_with_error!(&env, Error::InvalidState);
+        }
+
+        let current = env.current_contract_address();
+        let stuck = TokenClient::new(&env, &config.token).balance(&current);
+        if stuck == 0 {
+            panic_with_error!(&env, Error::NothingToRecover);
+        }
+        TokenClient::new(&env, &config.token).transfer(&current, &config.buyer, &stuck);
+
+        Recovered {
+            to: config.buyer,
+            amount: stuck,
         }
         .publish(&env);
     }
