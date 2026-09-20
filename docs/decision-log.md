@@ -85,9 +85,9 @@ Rol: frontend/integración; esta semana pareja de Julián en P0-08; dueño de P0
 Atribución: sus commits y PRs en el repo compartido se atribuyen al mismo equipo en ambas presentaciones.
 
 ## D-009 · Incidente de credencial en docs/test.md — 20-09-2026
-Estado: reportado por revisión externa el 20-09-2026; verificación del commit y rotación EN CURSO. Esta entrada se marcará como confirmada únicamente cuando Gonza confirme la rotación y el archivo esté retirado del ref público correspondiente.
+Estado: confirmado el 20-09-2026. Rotación ejecutada por Gonza: cuentas nuevas creadas, direcciones públicas compartidas por canales públicos, secret keys distribuidas únicamente por DM a quienes las necesitan para tests locales. Archivo retirado de main en PR #20 (merge confirmado).
 Hecho: el commit 92990c4 llevó a main un archivo con la frase de recuperación de una cuenta, en repo público.
-Acciones pendientes: cuenta tratada como comprometida y dejada de usar; cuentas nuevas para los roles afectados; archivo retirado de main; si la frase se usó en otra red, esa cuenta también rotada; secret scanning activado en P0-05.
+Acciones completadas: cuenta tratada como comprometida y dejada de usar; cuentas nuevas para los roles afectados; archivo retirado de main; rotación con buenas prácticas (no compartir claves por chat).
 Nota: borrar el archivo no limpia el historial público; la rotación es la mitigación real. Ninguna credencial vuelve al repo: solo placeholders en .env.example.
 
 ## Registro de cambios
@@ -100,3 +100,4 @@ Nota: borrar el archivo no limpia el historial público; la rotación es la miti
 | 19-09-2026 | D-007: stack Rust confirmado; lectura on-chain pendiente de reunión | Gonza, Julián | Cierra stack de D-003 y precisión de D-004; P0-07 etapa 2 sigue bloqueada |
 | 20-09-2026 | D-008: ForLess01 integra ambas competencias | Equipo | 2 de 4 = 50% Argentina, cumple elegibilidad |
 | 20-09-2026 | D-009: incidente de credencial reportado (rotación pendiente) | Linder | Trazabilidad del incidente; confirmación pendiente de Gonza |
+| 20-09-2026 | D-009: incidente de credencial confirmado y rotado | Gonza, Linder | Cuenta sustituida, archivo retirado de main |
