@@ -48,6 +48,33 @@ Decisión: publicar el backlog P0 con dueño y label en https://github.com/gonnn
 | P0-12 | #14 |
 Reglas derivadas: todo PR escribe `Closes #N` con el número de esta tabla; si un issue se cierra y se recrea, se actualiza esta tabla el mismo día; el tablero Projects es opcional y no condiciona el desarrollo.
 
+## D-006 · Chequeo preliminar de nombre CanguPay — 19-09-2026
+Estado: confirmado por Linder.
+Fuentes consultadas: [lista real: búsqueda general, GitHub, dominios, redes, INDECOPI/INPI si aplicaste]
+Coincidencias encontradas: ninguna confundible en las fuentes consultadas.
+Riesgo: [bajo/medio/alto según lo observado]
+Decisión: mantener CanguPay como nombre de trabajo para la hackatón.
+Aclaración: chequeo preliminar; no equivale a clearance legal de marca en Perú ni Argentina.
+
+## D-007 · Stack del agente y cierre parcial de D-003/D-004 — 19-09-2026
+Estado: stack confirmado por Gonza y Julián; mecanismo de lectura on-chain PENDIENTE de su reunión (20 o 21-09).
+
+Confirmado:
+1. Stack: Rust para el contrato Soroban y Rust para el agente/orquestador; Next.js/TypeScript para el frontend. Los stubs de `services/attestation-agent/src/` se implementan, no se eliminan. Cierra la parte de stack de D-003.
+2. Precisión del activo: el SAC devuelve `decimals()` fijo en 7, coherente con `amount` en unidades mínimas 10⁻⁷ de `docs/ruleset.md`. Ratifica la precisión pendiente de D-004.
+3. Las firmas del contrato están implementadas; revisión de enums a cargo de Linder contra la spec §10.3.
+
+Propuesta registrada, NO confirmada (se define en la reunión Gonza-Julián):
+- Lectura on-chain vía Stellar RPC (`getLedgerEntries`/`getContractData`), no Horizon.
+- Flujo híbrido de datos: el supplier envía el bundle al agente; el agente calcula su hash y lo contrasta con `evidence_bundle_hash`, `amount` y `token` leídos del contrato; si coinciden, evalúa y firma `attest()`.
+- Función `get_escrow()` read-only que exponga esos campos.
+
+Impacto:
+- El motor Python de P0-07 etapa 1 queda como referencia ejecutable de reglas y tests (29 tests verdes, oráculo contra `fixtures/manifest.json`); la implementación operativa del agente será Rust (P0-07 etapa 2).
+- P0-07 etapa 2 permanece bloqueada hasta que Gonza cierre P0-00 con el mecanismo de lectura y la ABI.
+
+Registro: la decisión final de lectura/ABI se anotará como D-008 tras la reunión Gonza-Julián.
+
 ## Registro de cambios
 
 | Fecha | Decisión | Responsable | Efecto |
@@ -55,3 +82,4 @@ Reglas derivadas: todo PR escribe `Closes #N` con el número de esta tabla; si u
 | 19-09-2026 | D-001 y D-002 | Linder | Congelar P0 y actualizar el nombre |
 | 19-09-2026 | D-003 y D-004 abiertos | Equipo | Cerrar stack, monto y ABI antes de integración |
 | 19-09-2026 | D-005: backlog P0 publicado (#2–#14) y labels creados | Linder | Trazabilidad códigos internos ↔ issues GitHub |
+| 19-09-2026 | D-007: stack Rust confirmado; lectura on-chain pendiente de reunión | Gonza, Julián | Cierra stack de D-003 y precisión de D-004; P0-07 etapa 2 sigue bloqueada |
