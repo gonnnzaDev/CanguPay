@@ -75,6 +75,20 @@ Impacto:
 
 Registro: la decisión final de lectura/ABI se anotará como D-008 tras la reunión Gonza-Julián.
 
+## D-008 · Integración de ForLess01 al equipo completo — 20-09-2026
+Estado: confirmado por decisión de equipo (Linder, Gonza, Julián).
+Decisión: ForLess01 integra el equipo de CanguPay en ambas competencias: Stellar Odyssey Perú y Argentina Builder Challenge.
+Elegibilidad Argentina: equipo de 4 con 2 residentes en Argentina (gonnnzaDev y Julianv3534) = 50%, cumple el mínimo; tamaño 2–4 cumple.
+Elegibilidad Perú: Linder y ForLess01 residen en Perú.
+Rol: frontend/integración; esta semana pareja de Julián en P0-08; dueño de P0-10 cuando aterrice; una issue activa a la vez.
+Atribución: sus commits y PRs en el repo compartido se atribuyen al mismo equipo en ambas presentaciones.
+
+## D-009 · Incidente de credencial en docs/test.md — 20-09-2026
+Estado: reportado por revisión externa el 20-09-2026; verificación del commit y rotación EN CURSO. Esta entrada se marcará como confirmada únicamente cuando Gonza confirme la rotación y el archivo esté retirado del ref público correspondiente.
+Hecho: el commit 92990c4 llevó a main un archivo con la frase de recuperación de una cuenta, en repo público.
+Acciones pendientes: cuenta tratada como comprometida y dejada de usar; cuentas nuevas para los roles afectados; archivo retirado de main; si la frase se usó en otra red, esa cuenta también rotada; secret scanning activado en P0-05.
+Nota: borrar el archivo no limpia el historial público; la rotación es la mitigación real. Ninguna credencial vuelve al repo: solo placeholders en .env.example.
+
 ## Registro de cambios
 
 | Fecha | Decisión | Responsable | Efecto |
