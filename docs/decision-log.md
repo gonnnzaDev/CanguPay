@@ -73,7 +73,22 @@ Impacto:
 - El motor Python de P0-07 etapa 1 queda como referencia ejecutable de reglas y tests (29 tests verdes, oráculo contra `fixtures/manifest.json`); la implementación operativa del agente será Rust (P0-07 etapa 2).
 - P0-07 etapa 2 permanece bloqueada hasta que Gonza cierre P0-00 con el mecanismo de lectura y la ABI.
 
-Registro: la decisión final de lectura/ABI se anotará como D-008 tras la reunión Gonza-Julián.
+Registro: la decisión final de lectura/ABI se anotará en una próxima entrada tras la reunión
+Gonza-Julián.
+
+## D-008 · Integración de ForLess01 al equipo completo — 20-09-2026
+Estado: confirmado por decisión de equipo (Linder, Gonza, Julián).
+Decisión: ForLess01 integra el equipo de CanguPay en ambas competencias: Stellar Odyssey Perú y Argentina Builder Challenge.
+Elegibilidad Argentina: equipo de 4 con 2 residentes en Argentina (gonnnzaDev y Julianv3534) = 50%, cumple el mínimo; tamaño 2–4 cumple.
+Elegibilidad Perú: Linder y ForLess01 residen en Perú.
+Rol: frontend/integración; esta semana pareja de Julián en P0-08; dueño de P0-10 cuando aterrice; una issue activa a la vez.
+Atribución: sus commits y PRs en el repo compartido se atribuyen al mismo equipo en ambas presentaciones.
+
+## D-009 · Incidente de credencial en docs/test.md — 20-09-2026
+Estado: reportado por revisión externa el 20-09-2026; verificación del commit y rotación EN CURSO. Esta entrada se marcará como confirmada únicamente cuando Gonza confirme la rotación y el archivo esté retirado del ref público correspondiente.
+Hecho: el commit 92990c4 llevó a main un archivo con la frase de recuperación de una cuenta, en repo público.
+Acciones pendientes: cuenta tratada como comprometida y dejada de usar; cuentas nuevas para los roles afectados; archivo retirado de main; si la frase se usó en otra red, esa cuenta también rotada; secret scanning activado en P0-05.
+Nota: borrar el archivo no limpia el historial público; la rotación es la mitigación real. Ninguna credencial vuelve al repo: solo placeholders en .env.example.
 
 ## Registro de cambios
 
@@ -83,3 +98,5 @@ Registro: la decisión final de lectura/ABI se anotará como D-008 tras la reuni
 | 19-09-2026 | D-003 y D-004 abiertos | Equipo | Cerrar stack, monto y ABI antes de integración |
 | 19-09-2026 | D-005: backlog P0 publicado (#2–#14) y labels creados | Linder | Trazabilidad códigos internos ↔ issues GitHub |
 | 19-09-2026 | D-007: stack Rust confirmado; lectura on-chain pendiente de reunión | Gonza, Julián | Cierra stack de D-003 y precisión de D-004; P0-07 etapa 2 sigue bloqueada |
+| 20-09-2026 | D-008: ForLess01 integra ambas competencias | Equipo | 2 de 4 = 50% Argentina, cumple elegibilidad |
+| 20-09-2026 | D-009: incidente de credencial reportado (rotación pendiente) | Linder | Trazabilidad del incidente; confirmación pendiente de Gonza |
