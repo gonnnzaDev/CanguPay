@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   EscrowDetailsProps,
   EscrowStatus,
@@ -8,10 +8,22 @@ import {
   getActiveActor,
   isTerminalStatus,
 } from "@/types/escrow";
+import {
+  CopyIcon,
+  CheckIcon,
+  RefreshIcon,
+  ExternalLinkIcon,
+  ShieldLockIcon,
+  ClockIcon,
+  HashIcon,
+  UserIcon,
+  AlertCircleIcon,
+  ScaleIcon,
+  FileTextIcon,
+} from "@/components/icons";
 
 /**
  * Truncates an address or cryptographic hash for concise display.
- * e.g., 0x4f82a...9b12
  */
 function truncateHash(hash: string, start = 8, end = 6): string {
   if (!hash) return "—";
@@ -20,115 +32,128 @@ function truncateHash(hash: string, start = 8, end = 6): string {
 }
 
 /**
- * Maps EscrowStatus to technical status badge styling.
+ * Maps EscrowStatus to technical status styling without generic pills or dots.
  */
 function getStatusBadgeConfig(status: EscrowStatus): {
   label: string;
-  badgeClass: string;
-  dotClass: string;
+  textColor: string;
+  borderColor: string;
 } {
   switch (status) {
     case "CREATED":
       return {
-        label: "CREATED",
-        badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-        dotClass: "bg-amber-500",
+        label: "CREADO",
+        textColor: "text-amber-700 dark:text-amber-400",
+        borderColor: "border-amber-500/30",
       };
     case "FUNDED":
       return {
-        label: "FUNDED",
-        badgeClass: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-        dotClass: "bg-blue-500",
+        label: "FONDEADO",
+        textColor: "text-teal-700 dark:text-teal-400",
+        borderColor: "border-teal-500/30",
       };
     case "EVIDENCE_SUBMITTED":
       return {
-        label: "EVIDENCE SUBMITTED",
-        badgeClass: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-        dotClass: "bg-indigo-500",
+        label: "EVIDENCIA PRESENTADA",
+        textColor: "text-blue-700 dark:text-blue-400",
+        borderColor: "border-blue-500/30",
       };
     case "ATTESTED_PASS":
       return {
-        label: "ATTESTED (PASS)",
-        badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-        dotClass: "bg-emerald-500",
+        label: "ATESTACIÓN APROBADA",
+        textColor: "text-emerald-700 dark:text-emerald-400",
+        borderColor: "border-emerald-500/30",
       };
     case "ATTESTED_FAIL":
       return {
-        label: "ATTESTED (FAIL)",
-        badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-        dotClass: "bg-rose-500",
+        label: "ATESTACIÓN OBSERVADA",
+        textColor: "text-rose-700 dark:text-rose-400",
+        borderColor: "border-rose-500/30",
       };
     case "DISPUTED":
       return {
-        label: "IN DISPUTE",
-        badgeClass: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
-        dotClass: "bg-purple-500 animate-pulse",
+        label: "EN DISPUTA",
+        textColor: "text-purple-700 dark:text-purple-400",
+        borderColor: "border-purple-500/30",
       };
     case "RELEASED":
       return {
-        label: "RELEASED",
-        badgeClass: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
-        dotClass: "bg-teal-500",
+        label: "FONDOS LIBERADOS",
+        textColor: "text-emerald-700 dark:text-emerald-400",
+        borderColor: "border-emerald-500/30",
       };
     case "REFUNDED":
       return {
-        label: "REFUNDED",
-        badgeClass: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400 border-neutral-500/20",
-        dotClass: "bg-neutral-500",
+        label: "REEMBOLSADO",
+        textColor: "text-neutral-700 dark:text-neutral-300",
+        borderColor: "border-neutral-500/30",
       };
     case "SPLIT":
       return {
-        label: "SPLIT SETTLED",
-        badgeClass: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
-        dotClass: "bg-cyan-500",
+        label: "DIVISIÓN LIQUIDADA",
+        textColor: "text-cyan-700 dark:text-cyan-400",
+        borderColor: "border-cyan-500/30",
       };
     case "CANCELLED":
       return {
-        label: "CANCELLED",
-        badgeClass: "bg-neutral-500/10 text-neutral-500 dark:text-neutral-400 border-neutral-500/20",
-        dotClass: "bg-neutral-400",
+        label: "CANCELADO",
+        textColor: "text-neutral-600 dark:text-neutral-400",
+        borderColor: "border-neutral-500/30",
       };
     default:
       return {
         label: status,
-        badgeClass: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400 border-neutral-500/20",
-        dotClass: "bg-neutral-400",
+        textColor: "text-neutral-600 dark:text-neutral-400",
+        borderColor: "border-neutral-500/30",
       };
   }
 }
 
 /**
- * Human-readable actor descriptions.
+ * Human-readable actor descriptions for B2B stakeholders.
  */
 function getActorMeta(actor: EscrowActor): { label: string; description: string } {
   switch (actor) {
     case "buyer":
       return {
         label: "Comprador (Buyer)",
-        description: "Debe fondear el escrow o aprobar la liberación tras atestación satisfactoria.",
+        description: "Revisión de orden para fondeo de depósito o validación de liberación definitiva.",
       };
     case "supplier":
       return {
         label: "Proveedor (Supplier)",
-        description: "Debe suministrar la evidencia documental o iniciar corrección/disputa tras fallo.",
+        description: "Remisión del lote documental de entrega física o presentación de corrección técnica.",
       };
     case "engine":
       return {
-        label: "Motor de Reglas (Engine)",
-        description: "Evaluando evidencia documental contra reglas deterministas acordadas.",
+        label: "Motor de Atestación (Engine)",
+        description: "Evaluación documental determinista de remisiones y facturas contra reglas preacordadas.",
       };
     case "resolver":
       return {
-        label: "Árbitro / Resolvedor (Resolver)",
-        description: "Revisión humana en curso para dictaminar liberación, reembolso o división proporcional.",
+        label: "Árbitro Neutral (Resolver)",
+        description: "Revisión de alegaciones contradictorias para dictamen vinculante (Release, Refund o Split).",
       };
     case "none":
     default:
       return {
         label: "Sin acción pendiente",
-        description: "El contrato se encuentra en un estado terminal o sin turno activo de intervención.",
+        description: "La operación se encuentra liquidada en un estado terminal inmutable.",
       };
   }
+}
+
+function subscribeToClock(callback: () => void): () => void {
+  const interval = setInterval(callback, 1000);
+  return () => clearInterval(interval);
+}
+
+function useCurrentTimestamp(): number {
+  return React.useSyncExternalStore(
+    subscribeToClock,
+    () => Math.floor(Date.now() / 1000),
+    () => 0
+  );
 }
 
 export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
@@ -138,16 +163,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   onRefresh,
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState<number>(() =>
-    Math.floor(Date.now() / 1000)
-  );
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(Math.floor(Date.now() / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const currentTime = useCurrentTimestamp();
 
   const handleCopy = (text: string, key: string) => {
     if (!text || text === "—") return;
@@ -160,13 +176,16 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   if (isLoading) {
     return (
       <div className="w-full max-w-5xl mx-auto p-6 space-y-6 animate-pulse">
-        <div className="h-10 bg-neutral-200 dark:bg-neutral-800 rounded-lg w-1/3" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="h-28 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl" />
-          <div className="h-28 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl" />
-          <div className="h-28 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl" />
+        <div className="flex items-center justify-between">
+          <div className="h-8 bg-neutral-200 dark:bg-neutral-800 rounded w-64" />
+          <div className="h-7 bg-neutral-200 dark:bg-neutral-800 rounded w-32" />
         </div>
-        <div className="h-64 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="h-32 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl" />
+          <div className="h-32 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl md:col-span-2" />
+        </div>
+        <div className="h-44 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl" />
+        <div className="h-56 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl" />
       </div>
     );
   }
@@ -175,21 +194,30 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   if (error) {
     return (
       <div className="w-full max-w-5xl mx-auto p-6">
-        <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-6 text-neutral-900 dark:text-neutral-100">
-          <div className="flex items-center gap-3">
-            <span className="flex h-3 w-3 rounded-full bg-rose-500" />
-            <h3 className="text-base font-medium">Error al consultar escrow</h3>
+        <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-6 text-neutral-900 dark:text-neutral-100 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400">
+              <AlertCircleIcon size={18} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+                Fallo de consulta en el contrato
+              </h3>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 font-mono">
+                {error}
+              </p>
+            </div>
           </div>
-          <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400 font-mono">
-            {error}
-          </p>
           {onRefresh && (
-            <button
-              onClick={onRefresh}
-              className="mt-4 inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-lg bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 hover:opacity-90 transition-opacity"
-            >
-              Reintentar consulta
-            </button>
+            <div className="mt-4 pt-3 border-t border-rose-500/10 flex justify-end">
+              <button
+                onClick={onRefresh}
+                className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 hover:opacity-90 transition-opacity"
+              >
+                <RefreshIcon size={13} />
+                Reintentar sincronización
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -199,15 +227,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   // 3. Empty State
   if (!data) {
     return (
-      <div className="w-full max-w-5xl mx-auto p-12 text-center border border-dashed border-neutral-300 dark:border-neutral-800 rounded-2xl">
-        <div className="mx-auto w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center text-neutral-400 mb-3">
-          <span className="font-mono text-sm">#</span>
+      <div className="w-full max-w-5xl mx-auto p-12 text-center border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl bg-neutral-50/50 dark:bg-neutral-950/50">
+        <div className="mx-auto w-12 h-12 rounded bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center text-neutral-400 mb-3 border border-neutral-200/60 dark:border-neutral-800/60">
+          <FileTextIcon size={20} />
         </div>
         <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-          Sin datos de escrow
+          No hay contrato activo
         </h3>
         <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto">
-          No se encontró ninguna operación activa de CanguPay para mostrar en esta vista.
+          Seleccione una operación para consultar los datos del escrow en Stellar Testnet.
         </p>
       </div>
     );
@@ -218,14 +246,14 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   const actorMeta = getActorMeta(activeActor);
   const isTerminal = isTerminalStatus(data.status);
 
-  // Relative deadline estimation (Informational only)
+  // Client-safe deadline calculation
   let deadlineDiffSeconds = 0;
-  if (data.activeDeadline?.timestamp) {
+  if (data.activeDeadline?.timestamp && currentTime > 0) {
     deadlineDiffSeconds = data.activeDeadline.timestamp - currentTime;
   }
 
   const formatCountdown = (diff: number) => {
-    if (diff <= 0) return "Vencido en tiempo de reloj (verificar ledger)";
+    if (diff <= 0) return "Plazo vencido según tiempo local (confirmar ledger)";
     const hours = Math.floor(diff / 3600);
     const minutes = Math.floor((diff % 3600) / 60);
     const seconds = diff % 60;
@@ -239,81 +267,105 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
     : null;
 
   return (
-    <div className="w-full max-w-5xl mx-auto p-4 md:p-6 space-y-6 text-neutral-900 dark:text-neutral-100">
-      {/* Header & Status */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-neutral-800">
+    <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 space-y-6 text-neutral-900 dark:text-neutral-100">
+      {/* Header & Status Indicator (No generic pill, no dot) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-neutral-200/80 dark:border-neutral-800/80">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs uppercase tracking-widest text-neutral-400 font-semibold">
-              Operación CanguPay
-            </span>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
-              Testnet
+          <div className="flex items-center gap-2 mb-1.5 font-mono text-[11px]">
+            <span className="text-teal-600 dark:text-teal-400 font-semibold flex items-center gap-1.5">
+              <ShieldLockIcon size={14} />
+              SOROBAN // ESCROW
             </span>
           </div>
-          <div className="flex items-center gap-3 mt-1">
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight font-mono">
+
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight font-mono text-neutral-950 dark:text-neutral-50">
               {data.operationId}
             </h1>
             <button
               onClick={() => handleCopy(data.operationId, "operationId")}
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
               title="Copiar ID"
-              className="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
             >
-              {copiedKey === "operationId" ? "Copiado ✓" : "Copiar"}
+              {copiedKey === "operationId" ? (
+                <CheckIcon size={14} className="text-emerald-500" />
+              ) : (
+                <CopyIcon size={14} />
+              )}
             </button>
           </div>
         </div>
 
+        {/* Technical Split Status Block (Replaces generic pill with dot) */}
         <div className="flex items-center gap-3">
-          <div
-            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-mono font-medium tracking-wide ${statusConfig.badgeClass}`}
-          >
-            <span className={`w-2 h-2 rounded-full ${statusConfig.dotClass}`} />
-            {statusConfig.label}
+          <div className={`flex items-center border ${statusConfig.borderColor} rounded-lg overflow-hidden bg-neutral-50/80 dark:bg-neutral-900/80 font-mono shadow-2xs`}>
+            <span className="px-2.5 py-1.5 bg-neutral-100 dark:bg-neutral-800/80 text-[10px] font-bold tracking-wider text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-800 uppercase">
+              STATUS
+            </span>
+            <span className={`px-3 py-1.5 font-bold text-xs tracking-wider uppercase ${statusConfig.textColor}`}>
+              {statusConfig.label}
+            </span>
           </div>
 
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors border border-neutral-200 dark:border-neutral-800 rounded-lg"
-              title="Actualizar estado"
+              className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-900"
+              title="Refrescar datos del ledger"
             >
-              ↻
+              <RefreshIcon size={14} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Top Metrics Cards: Amount & Active Actor */}
+      {/* Primary Metrics: Amount & Current Turn */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Metric 1: Amount in Custody */}
-        <div className="p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 shadow-xs">
-          <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-            Monto en Custodia
-          </span>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono tracking-tight">
-              {data.amount}
+        {/* Metric 1: Amount (Overflow-proof with decimal hierarchy) */}
+        <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs flex flex-col justify-between min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-mono truncate">
+              FONDOS BAJO CUSTODIA
             </span>
-            <span className="text-sm font-semibold text-neutral-500 font-mono">
-              {data.asset}
+            <span className="text-[10px] font-mono text-teal-700 dark:text-teal-300 font-bold border border-teal-500/30 bg-teal-500/5 px-2 py-0.5 rounded shrink-0">
+              {data.asset} {"//"} SAC
             </span>
           </div>
-          <p className="mt-1 text-xs text-neutral-400">
+
+          {(() => {
+            const [intPart, decPart] = data.amount.split(".");
+            return (
+              <div className="my-2 flex items-baseline gap-1 font-mono flex-wrap min-w-0">
+                <span className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 dark:text-white truncate">
+                  {intPart}
+                </span>
+                {decPart !== undefined && (
+                  <span className="text-xs sm:text-sm font-semibold text-neutral-400 dark:text-neutral-500 shrink-0">
+                    .{decPart}
+                  </span>
+                )}
+                <span className="text-xs font-mono font-bold text-teal-600 dark:text-teal-400 ml-1 shrink-0">
+                  {data.asset}
+                </span>
+              </div>
+            );
+          })()}
+
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
             Reserva atómica en contrato inteligente
           </p>
         </div>
 
         {/* Metric 2: Active Actor */}
-        <div className="p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 shadow-xs md:col-span-2">
+        <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs md:col-span-2 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-              Turno Activo (UX Hint)
+            <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest flex items-center gap-1.5 font-mono">
+              <UserIcon size={13} />
+              TURNO DE ACCIÓN
             </span>
             {!isTerminal && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
-                Esperando acción
+              <span className="font-mono text-[10px] font-bold tracking-wider text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded">
+                EN CURSO
               </span>
             )}
           </div>
@@ -321,124 +373,173 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             <h4 className="text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
               {actorMeta.label}
             </h4>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
               {actorMeta.description}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Active Deadline Panel */}
+      {/* Active Deadline Panel (Hydration Safe) */}
       {data.activeDeadline && !isTerminal && (
-        <div className="p-5 rounded-xl border border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/[0.03]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
-                Plazo activo: {data.activeDeadline.label}
-              </span>
-              <p className="text-sm font-medium mt-0.5 text-neutral-800 dark:text-neutral-200">
-                {formatCountdown(deadlineDiffSeconds)}
-              </p>
+        <div className="p-4 sm:p-5 rounded-xl border border-amber-500/25 bg-amber-500/[0.03] dark:bg-amber-500/[0.02]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                <ClockIcon size={17} />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest font-mono block">
+                  PLAZO LÍMITE: {data.activeDeadline.label}
+                </span>
+                <p
+                  className="text-sm font-semibold mt-0.5 text-neutral-900 dark:text-neutral-100 font-mono"
+                  suppressHydrationWarning
+                >
+                  {currentTime > 0
+                    ? formatCountdown(deadlineDiffSeconds)
+                    : "Sincronizando reloj con ledger..."}
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-xs text-neutral-400 font-mono block">
-                Timestamp: {data.activeDeadline.timestamp}
+            <div className="sm:text-right">
+              <span className="text-[10px] text-neutral-500 font-mono block uppercase">
+                Timestamp Límite:
+              </span>
+              <span className="text-xs font-mono font-medium text-neutral-700 dark:text-neutral-300">
+                {data.activeDeadline.timestamp}
               </span>
             </div>
           </div>
-          <p className="mt-3 text-[11px] text-neutral-500 dark:text-neutral-400 italic border-t border-amber-500/10 pt-2">
-            * El contador visible es informativo. El contrato usa el timestamp del
-            ledger (<code className="font-mono">env.ledger().timestamp()</code>) como
-            fuente de verdad indiscutible.
-          </p>
         </div>
       )}
 
       {/* Parties / Roles Panel */}
-      <div className="p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 shadow-xs">
-        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4 tracking-tight">
-          Participantes del Escrow
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
-            <span className="text-neutral-400 block mb-1 uppercase text-[10px] tracking-wider">
-              Buyer (Comprador)
-            </span>
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate">{data.parties.buyer}</span>
-              <button
-                onClick={() => handleCopy(data.parties.buyer, "buyer")}
-                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 shrink-0"
-              >
-                {copiedKey === "buyer" ? "✓" : "Copiar"}
-              </button>
+      <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs">
+        <div className="flex items-center gap-2 mb-4">
+          <ScaleIcon size={15} className="text-neutral-400" />
+          <h3 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-mono">
+            PARTICIPANTES DE LA OPERACIÓN
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+          {/* Buyer */}
+          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
+            <div className="truncate">
+              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
+                Comprador (Buyer)
+              </span>
+              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
+                {data.parties.buyer}
+              </span>
             </div>
+            <button
+              onClick={() => handleCopy(data.parties.buyer, "buyer")}
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+              title="Copiar dirección"
+            >
+              {copiedKey === "buyer" ? (
+                <CheckIcon size={14} className="text-emerald-500" />
+              ) : (
+                <CopyIcon size={14} />
+              )}
+            </button>
           </div>
 
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
-            <span className="text-neutral-400 block mb-1 uppercase text-[10px] tracking-wider">
-              Supplier (Proveedor)
-            </span>
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate">{data.parties.supplier}</span>
-              <button
-                onClick={() => handleCopy(data.parties.supplier, "supplier")}
-                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 shrink-0"
-              >
-                {copiedKey === "supplier" ? "✓" : "Copiar"}
-              </button>
+          {/* Supplier */}
+          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
+            <div className="truncate">
+              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
+                Proveedor (Supplier)
+              </span>
+              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
+                {data.parties.supplier}
+              </span>
             </div>
+            <button
+              onClick={() => handleCopy(data.parties.supplier, "supplier")}
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+              title="Copiar dirección"
+            >
+              {copiedKey === "supplier" ? (
+                <CheckIcon size={14} className="text-emerald-500" />
+              ) : (
+                <CopyIcon size={14} />
+              )}
+            </button>
           </div>
 
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
-            <span className="text-neutral-400 block mb-1 uppercase text-[10px] tracking-wider">
-              Engine (Motor de Reglas)
-            </span>
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate">{data.parties.engine}</span>
-              <button
-                onClick={() => handleCopy(data.parties.engine, "engine")}
-                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 shrink-0"
-              >
-                {copiedKey === "engine" ? "✓" : "Copiar"}
-              </button>
+          {/* Engine */}
+          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
+            <div className="truncate">
+              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
+                Motor de Atestación (Engine)
+              </span>
+              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
+                {data.parties.engine}
+              </span>
             </div>
+            <button
+              onClick={() => handleCopy(data.parties.engine, "engine")}
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+              title="Copiar dirección"
+            >
+              {copiedKey === "engine" ? (
+                <CheckIcon size={14} className="text-emerald-500" />
+              ) : (
+                <CopyIcon size={14} />
+              )}
+            </button>
           </div>
 
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
-            <span className="text-neutral-400 block mb-1 uppercase text-[10px] tracking-wider">
-              Resolver (Árbitro)
-            </span>
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate">{data.parties.resolver}</span>
-              <button
-                onClick={() => handleCopy(data.parties.resolver, "resolver")}
-                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 shrink-0"
-              >
-                {copiedKey === "resolver" ? "✓" : "Copiar"}
-              </button>
+          {/* Resolver */}
+          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
+            <div className="truncate">
+              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
+                Árbitro Neutral (Resolver)
+              </span>
+              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
+                {data.parties.resolver}
+              </span>
             </div>
+            <button
+              onClick={() => handleCopy(data.parties.resolver, "resolver")}
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+              title="Copiar dirección"
+            >
+              {copiedKey === "resolver" ? (
+                <CheckIcon size={14} className="text-emerald-500" />
+              ) : (
+                <CopyIcon size={14} />
+              )}
+            </button>
           </div>
         </div>
       </div>
 
       {/* Cryptographic Hashes Vault */}
-      <div className="p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 shadow-xs">
-        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1 tracking-tight">
-          Bóveda Criptográfica y Evidencia
-        </h3>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
-          Hashes SHA-256 / BytesN&lt;32&gt; verificables contra reglas documentales.
-        </p>
+      <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <HashIcon size={15} className="text-neutral-400" />
+            <h3 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-mono">
+              BÓVEDA DE HASHES CRIPTOGRÁFICOS
+            </h3>
+          </div>
+          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest px-2 py-0.5 rounded border border-neutral-200/60 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-900/60">
+            BytesN&lt;32&gt;
+          </span>
+        </div>
 
-        <div className="space-y-2 text-xs font-mono">
-          {/* Evidence Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 gap-1">
+        <div className="space-y-2.5 text-xs font-mono">
+          {/* Evidence Bundle Hash */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
             <span className="text-neutral-500 font-sans text-xs">
-              Evidence Bundle Hash:
+              Lote Documental (Evidence Bundle):
             </span>
             <div className="flex items-center gap-2">
-              <span className="truncate text-neutral-800 dark:text-neutral-200">
+              <span className="text-neutral-800 dark:text-neutral-200">
                 {truncateHash(data.hashes.evidenceBundleHash || "")}
               </span>
               {data.hashes.evidenceBundleHash && (
@@ -446,21 +547,26 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   onClick={() =>
                     handleCopy(data.hashes.evidenceBundleHash!, "evidenceHash")
                   }
-                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+                  title="Copiar hash"
                 >
-                  {copiedKey === "evidenceHash" ? "✓" : "Copiar"}
+                  {copiedKey === "evidenceHash" ? (
+                    <CheckIcon size={14} className="text-emerald-500" />
+                  ) : (
+                    <CopyIcon size={14} />
+                  )}
                 </button>
               )}
             </div>
           </div>
 
-          {/* Report Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 gap-1">
+          {/* Engine Report Hash */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
             <span className="text-neutral-500 font-sans text-xs">
-              Engine Report Hash:
+              Dictamen del Motor (Report Hash):
             </span>
             <div className="flex items-center gap-2">
-              <span className="truncate text-neutral-800 dark:text-neutral-200">
+              <span className="text-neutral-800 dark:text-neutral-200">
                 {truncateHash(data.hashes.reportHash || "")}
               </span>
               {data.hashes.reportHash && (
@@ -468,21 +574,26 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   onClick={() =>
                     handleCopy(data.hashes.reportHash!, "reportHash")
                   }
-                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+                  title="Copiar hash"
                 >
-                  {copiedKey === "reportHash" ? "✓" : "Copiar"}
+                  {copiedKey === "reportHash" ? (
+                    <CheckIcon size={14} className="text-emerald-500" />
+                  ) : (
+                    <CopyIcon size={14} />
+                  )}
                 </button>
               )}
             </div>
           </div>
 
           {/* Dispute Reason Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
             <span className="text-neutral-500 font-sans text-xs">
-              Dispute Reason Hash:
+              Motivo de Objeción (Reason Hash):
             </span>
             <div className="flex items-center gap-2">
-              <span className="truncate text-neutral-800 dark:text-neutral-200">
+              <span className="text-neutral-800 dark:text-neutral-200">
                 {truncateHash(data.hashes.reasonHash || "")}
               </span>
               {data.hashes.reasonHash && (
@@ -490,21 +601,26 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   onClick={() =>
                     handleCopy(data.hashes.reasonHash!, "reasonHash")
                   }
-                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+                  title="Copiar hash"
                 >
-                  {copiedKey === "reasonHash" ? "✓" : "Copiar"}
+                  {copiedKey === "reasonHash" ? (
+                    <CheckIcon size={14} className="text-emerald-500" />
+                  ) : (
+                    <CopyIcon size={14} />
+                  )}
                 </button>
               )}
             </div>
           </div>
 
           {/* Dispute Evidence Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
             <span className="text-neutral-500 font-sans text-xs">
-              Dispute Evidence Hash:
+              Pruebas de Disputa (Dispute Evidence):
             </span>
             <div className="flex items-center gap-2">
-              <span className="truncate text-neutral-800 dark:text-neutral-200">
+              <span className="text-neutral-800 dark:text-neutral-200">
                 {truncateHash(data.hashes.disputeEvidenceHash || "")}
               </span>
               {data.hashes.disputeEvidenceHash && (
@@ -515,9 +631,14 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                       "disputeEvidenceHash"
                     )
                   }
-                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors"
+                  title="Copiar hash"
                 >
-                  {copiedKey === "disputeEvidenceHash" ? "✓" : "Copiar"}
+                  {copiedKey === "disputeEvidenceHash" ? (
+                    <CheckIcon size={14} className="text-emerald-500" />
+                  ) : (
+                    <CopyIcon size={14} />
+                  )}
                 </button>
               )}
             </div>
@@ -525,12 +646,12 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         </div>
       </div>
 
-      {/* Explorer Link & Footer Meta */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 text-xs text-neutral-500">
+      {/* Explorer Link & Audit Note */}
+      <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-neutral-500">
         <div>
           {data.contractId && (
-            <span className="font-mono">
-              Contract: {truncateHash(data.contractId, 10, 8)}
+            <span className="font-mono text-neutral-600 dark:text-neutral-400">
+              Contrato: {truncateHash(data.contractId, 12, 8)}
             </span>
           )}
         </div>
@@ -540,12 +661,18 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             href={explorerUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
+            className="inline-flex items-center gap-1.5 text-teal-600 dark:text-teal-400 hover:underline font-semibold font-mono"
           >
-            Ver en Stellar Expert Testnet ↗
+            Consultar en Stellar Expert
+            <ExternalLinkIcon size={13} />
           </a>
         )}
       </div>
+
+      {/* Audit Disclaimer */}
+      <p className="text-[11px] text-neutral-400 dark:text-neutral-500 border-t border-neutral-200/60 dark:border-neutral-800/60 pt-3">
+        Nota de auditoría: Los plazos contractuales se computan en función del timestamp oficial del ledger (<code className="font-mono text-[10px]">env.ledger().timestamp()</code>), no de la hora del dispositivo.
+      </p>
     </div>
   );
 };

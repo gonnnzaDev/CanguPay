@@ -1,10 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
+import { CanguPayLogo } from "@/components/icons";
+import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
 import { EscrowDetailsData, EscrowStatus } from "@/types/escrow";
 
-// Mock fixtures representing key CanguPay P0 state machine stages
+// Representative fixtures for CanguPay P0 state machine stages with deterministic timestamps
+const BASE_LEDGER_TIME = 1758412800; // Deterministic reference timestamp (eliminates hydration drift)
+
 const mockEscrows: Record<string, EscrowDetailsData> = {
   FUNDED: {
     operationId: "CANGU-OP-2026-001",
@@ -21,7 +25,7 @@ const mockEscrows: Record<string, EscrowDetailsData> = {
     activeDeadline: {
       type: "submission",
       label: "Envío de Evidencia Documental",
-      timestamp: Math.floor(Date.now() / 1000) + 14400, // +4 hours
+      timestamp: BASE_LEDGER_TIME + 14400,
     },
     hashes: {
       evidenceBundleHash: "0x7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
@@ -42,8 +46,8 @@ const mockEscrows: Record<string, EscrowDetailsData> = {
     },
     activeDeadline: {
       type: "action",
-      label: "Ventana de Aprobación u Objeción del Comprador",
-      timestamp: Math.floor(Date.now() / 1000) + 7200, // +2 hours
+      label: "Ventana de Objeción del Comprador",
+      timestamp: BASE_LEDGER_TIME + 7200,
     },
     hashes: {
       evidenceBundleHash: "0x3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a",
@@ -65,8 +69,8 @@ const mockEscrows: Record<string, EscrowDetailsData> = {
     },
     activeDeadline: {
       type: "resolution",
-      label: "Resolución del Árbitro (Release / Refund / Split)",
-      timestamp: Math.floor(Date.now() / 1000) + 28800, // +8 hours
+      label: "Resolución del Árbitro",
+      timestamp: BASE_LEDGER_TIME + 28800,
     },
     hashes: {
       evidenceBundleHash: "0x11223344556677889900aabbccddeeff0011223344556677889900aabbccddee",
@@ -105,43 +109,54 @@ export default function Home() {
   const currentData = isEmpty ? null : mockEscrows[activeScenario] || null;
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 font-sans">
-      {/* Top Banner / Navigation */}
-      <header className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 sticky top-0 z-10 backdrop-blur-sm">
-        <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
+    <div className="min-h-screen font-sans antialiased selection:bg-teal-500/20">
+      {/* Top Navbar (Pinned / Fixed to top) */}
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 dark:border-neutral-800/80 bg-white/85 dark:bg-neutral-900/85 backdrop-blur-md">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="h-6 w-6 rounded-md bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 flex items-center justify-center font-bold text-xs">
-              CP
+            {/* Official CanguPay Brand Logo (transparent vector) */}
+            <CanguPayLogo className="h-7 sm:h-8 w-auto" />
+            <span className="hidden sm:inline-block text-neutral-300 dark:text-neutral-700 font-light">
+              |
             </span>
-            <span className="font-semibold text-sm tracking-tight text-neutral-900 dark:text-neutral-100">
-              CanguPay
-            </span>
-            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">
-              P0-08 Preview
+            <span className="hidden sm:inline-block text-xs text-neutral-500 dark:text-neutral-400 font-mono tracking-tight">
+              B2B CONDITIONAL ESCROW
             </span>
           </div>
 
-          <div className="text-xs text-neutral-500 font-mono">
-            Red: <span className="text-blue-600 dark:text-blue-400">Stellar Testnet</span>
+          {/* Header Controls: Theme Mode & Network */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <ThemeSwitcher />
+
+            {/* Technical Network Indicator */}
+            <div className="flex items-center font-mono text-xs border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden bg-neutral-100/60 dark:bg-neutral-900/60 shadow-2xs">
+              <span className="px-2.5 py-1 bg-neutral-200/50 dark:bg-neutral-800 text-[10px] text-neutral-500 dark:text-neutral-400 font-bold border-r border-neutral-200 dark:border-neutral-800">
+                NETWORK
+              </span>
+              <span className="px-2.5 py-1 text-[11px] font-bold text-teal-700 dark:text-teal-300 tracking-wider">
+                TESTNET
+              </span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-        {/* Mock Controls Banner */}
-        <div className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/40 text-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* Main Content */}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        {/* Scenario Switcher Console */}
+        <div className="p-4 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white/90 dark:bg-neutral-900/70 backdrop-blur-xs shadow-xs">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
-              <span className="font-semibold uppercase tracking-wider text-neutral-500 block mb-1">
-                Selector de Escenario UI (Mock Fixtures)
+              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400 block">
+                CONSOLA DE CONTROL
               </span>
-              <p className="text-neutral-600 dark:text-neutral-400">
-                Visualización presentacional desacoplada de la blockchain (Refs #10).
-              </p>
+              <h2 className="text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+                Simulador de Ciclo de Vida del Contrato
+              </h2>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5 font-mono">
+            {/* Segmented control tabs */}
+            <div className="flex flex-wrap items-center gap-1 font-mono text-xs p-1 bg-neutral-100 dark:bg-neutral-800/60 rounded-lg border border-neutral-200/60 dark:border-neutral-700/60">
               {(["FUNDED", "ATTESTED_PASS", "DISPUTED", "RELEASED"] as EscrowStatus[]).map(
                 (status) => (
                   <button
@@ -152,10 +167,10 @@ export default function Home() {
                       setIsLoading(false);
                       setActiveScenario(status);
                     }}
-                    className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
                       !isEmpty && !hasError && !isLoading && activeScenario === status
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                        ? "bg-white dark:bg-neutral-900 text-neutral-950 dark:text-neutral-50 shadow-xs border border-neutral-200/60 dark:border-neutral-700/60"
+                        : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200"
                     }`}
                   >
                     {status}
@@ -163,19 +178,21 @@ export default function Home() {
                 )
               )}
 
+              <span className="text-neutral-300 dark:text-neutral-700 mx-0.5">|</span>
+
               <button
                 onClick={() => {
                   setIsEmpty(false);
                   setHasError(false);
                   setIsLoading(true);
                 }}
-                className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-all ${
                   isLoading
-                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold"
-                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    ? "bg-white dark:bg-neutral-900 text-neutral-950 dark:text-neutral-50 shadow-xs border border-neutral-200/60 dark:border-neutral-700/60"
+                    : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200"
                 }`}
               >
-                Loading
+                Carga
               </button>
 
               <button
@@ -184,10 +201,10 @@ export default function Home() {
                   setIsLoading(false);
                   setHasError(true);
                 }}
-                className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-all ${
                   hasError
-                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold"
-                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    ? "bg-white dark:bg-neutral-900 text-neutral-950 dark:text-neutral-50 shadow-xs border border-neutral-200/60 dark:border-neutral-700/60"
+                    : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200"
                 }`}
               >
                 Error
@@ -199,24 +216,24 @@ export default function Home() {
                   setIsLoading(false);
                   setIsEmpty(true);
                 }}
-                className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-all ${
                   isEmpty
-                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-semibold"
-                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    ? "bg-white dark:bg-neutral-900 text-neutral-950 dark:text-neutral-50 shadow-xs border border-neutral-200/60 dark:border-neutral-700/60"
+                    : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200"
                 }`}
               >
-                Empty
+                Vacío
               </button>
             </div>
           </div>
         </div>
 
-        {/* EscrowDetails Component View */}
-        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-2 sm:p-6 shadow-xs">
+        {/* EscrowDetails Component */}
+        <div className="bg-white/95 dark:bg-neutral-900/85 backdrop-blur-xs border border-neutral-200/80 dark:border-neutral-800/80 rounded-2xl shadow-xs">
           <EscrowDetails
             data={currentData}
             isLoading={isLoading}
-            error={hasError ? "No se pudo recuperar la entrada de ledger: RPC_TIMEOUT" : null}
+            error={hasError ? "Fallo de conexión al nodo RPC de Stellar Testnet (TIMEOUT)" : null}
             onRefresh={() => {
               setIsLoading(false);
               setHasError(false);
