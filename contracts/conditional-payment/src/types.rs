@@ -11,6 +11,12 @@ pub struct EscrowConfig {
     pub token: Address,
     pub amount: i128,
     pub submission_period: u64,
+    pub attestation_period: u64,
+    pub objection_period: u64,
+    pub correction_period: u64,
+    pub resolution_period: u64,
+    pub fallback_outcome: FallbackOutcome,
+    pub fallback_split_bps: u32,
 }
 
 #[contracttype]
@@ -23,6 +29,9 @@ pub enum EscrowState {
     AttestedFail,
     Released,
     Cancelled,
+    Refunded,
+    Disputed,
+    Split,
 }
 
 #[contracttype]
@@ -34,13 +43,36 @@ pub enum AttestationOutcome {
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FallbackOutcome {
+    Release = 1,
+    Refund = 2,
+    Split = 3,
+}
+
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FinalizeReason {
+    SubmissionTimeout = 1,
+    AttestationTimeout = 2,
+    NoObjection = 3,
+    CorrectionTimeout = 4,
+    ResolutionTimeout = 5,
+}
+
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Config,
     State,
     FundedAt,
     SubmissionDeadline,
+    AttestationDeadline,
+    AttestedAt,
     EvidenceBundleHash,
     ReportHash,
+    DisputedAt,
+    ResolutionDeadline,
+    CorrectionAttempts,
 }
 
 #[contracterror]
@@ -54,4 +86,11 @@ pub enum Error {
     SubmissionDeadlinePassed = 7,
     AlreadyApproved = 8,
     NothingToRecover = 9,
+    NotFinalizableYet = 10,
+    InvalidAttestationPeriod = 11,
+    InvalidObjectionPeriod = 12,
+    InvalidCorrectionPeriod = 13,
+    InvalidResolutionPeriod = 14,
+    InvalidFallback = 15,
+    AttestationDeadlinePassed = 16,
 }

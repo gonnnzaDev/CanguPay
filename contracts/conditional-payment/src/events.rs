@@ -6,7 +6,7 @@
 
 use soroban_sdk::{contractevent, Address, BytesN};
 
-use crate::types::AttestationOutcome;
+use crate::types::{AttestationOutcome, FallbackOutcome, FinalizeReason};
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,6 +21,12 @@ pub struct EscrowCreated {
     pub token: Address,
     pub amount: i128,
     pub submission_period: u64,
+    pub attestation_period: u64,
+    pub objection_period: u64,
+    pub correction_period: u64,
+    pub resolution_period: u64,
+    pub fallback_outcome: FallbackOutcome,
+    pub fallback_split_bps: u32,
 }
 
 #[contractevent]
@@ -66,4 +72,10 @@ pub struct Recovered {
     #[topic]
     pub to: Address,
     pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Finalized {
+    pub reason: FinalizeReason,
 }

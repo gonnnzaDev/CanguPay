@@ -1,11 +1,11 @@
-//! Pruebas de aceptación P0-02.
+//! Pruebas de aceptación P0-03.
 //!
 //! Cubren el camino feliz `CREATED → FUNDED → EVIDENCE_SUBMITTED →
-//! ATTESTED_PASS → RELEASED`, el de fallo (`ATTESTED_FAIL` retiene fondos) y
+//! ATTESTED_PASS → RELEASED`, el de fallo (`ATTESTED_FAIL` retiene fondos),
 //! `CREATED → CANCELLED`, más las reglas de negocio: fondeo por pull atómico,
 //! recuperación tras fallo, `recover()` de saldos enviados por error,
-//! deadline de evidencia, exclusividad de roles con firmante equivocado y
-//! doble aprobación.
+//! deadline de evidencia, exclusividad de roles con firmante equivocado,
+//! doble aprobación y vencimientos `finalize()` (ghost supplier/engine).
 
 use super::*;
 extern crate std;
@@ -17,6 +17,10 @@ use soroban_sdk::{token::StellarAssetClient, xdr, Address, BytesN, IntoVal, Muxe
 const AMOUNT: i128 = 10_000_000_000;
 const STRAY: i128 = 2_000_000_000;
 const SUBMISSION_PERIOD: u64 = 1000;
+const ATTESTATION_PERIOD: u64 = 1000;
+const OBJECTION_PERIOD: u64 = 1000;
+const CORRECTION_PERIOD: u64 = 1000;
+const RESOLUTION_PERIOD: u64 = 1000;
 const FUNDED_AT: u64 = 0;
 
 fn evidence_hash(env: &Env) -> BytesN<32> {
@@ -97,6 +101,12 @@ impl TestContext {
             token: self.token.clone(),
             amount: AMOUNT,
             submission_period: SUBMISSION_PERIOD,
+            attestation_period: ATTESTATION_PERIOD,
+            objection_period: OBJECTION_PERIOD,
+            correction_period: CORRECTION_PERIOD,
+            resolution_period: RESOLUTION_PERIOD,
+            fallback_outcome: FallbackOutcome::Refund,
+            fallback_split_bps: 0,
         }
     }
 
@@ -150,6 +160,12 @@ fn happy_path_pass_releases_funds() {
         token: ctx.token.clone(),
         amount: AMOUNT,
         submission_period: SUBMISSION_PERIOD,
+        attestation_period: ATTESTATION_PERIOD,
+        objection_period: OBJECTION_PERIOD,
+        correction_period: CORRECTION_PERIOD,
+        resolution_period: RESOLUTION_PERIOD,
+        fallback_outcome: FallbackOutcome::Refund,
+        fallback_split_bps: 0,
     }
     .to_xdr(&ctx.env, &ctx.contract));
     assert_eq!(ctx.client().state(), EscrowState::Created);
@@ -835,4 +851,265 @@ fn recover_by_supplier_rejected_in_created() {
     must_panic(|| ctx.client().recover());
     assert_eq!(ctx.client().state(), EscrowState::Created);
     assert_eq!(ctx.token_balance(&ctx.contract), STRAY);
+}
+
+// ── P0-03: vencimientos finalize() ──
+
+#[test]
+fn ghost_supplier_submission_timeout_refunds() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    {
+        let events = ctx.own_events();
+        std::println!("GHOST after fund events len {}: {:?}", events.len(), events);
+        let expected = Funded { funded_at: FUNDED_AT, submission_deadline: FUNDED_AT + SUBMISSION_PERIOD }.to_xdr(&ctx.env, &ctx.contract);
+        std::println!("Expected Funded: {:?}", expected);
+    }
+    assert_eq!(ctx.client().state(), EscrowState::Funded);
+    let deadline = FUNDED_AT + SUBMISSION_PERIOD;
+
+    // deadline -1: aún no finalizable.
+    ctx.env.ledger().set_timestamp(deadline - 1);
+    must_panic(|| { ctx.client().finalize(); });
+    assert_eq!(ctx.client().state(), EscrowState::Funded);
+    assert_eq!(ctx.token_balance(&ctx.contract), AMOUNT);
+
+    // deadline: ghost supplier → refund.
+    ctx.env.ledger().set_timestamp(deadline);
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Refunded);
+    // Verificamos que se emitió Finalized antes de consultar state (state() limpia eventos en este harness).
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e == Finalized { reason: FinalizeReason::SubmissionTimeout }.to_xdr(&ctx.env, &ctx.contract)), "debe emitir Finalized SubmissionTimeout");
+    assert_eq!(ctx.client().state(), EscrowState::Refunded);
+    assert_eq!(ctx.token_balance(&ctx.buyer), AMOUNT, "buyer recuperado");
+    assert_eq!(ctx.token_balance(&ctx.contract), 0);
+
+    // deadline +1 e idempotencia: segunda llamada no transfiere ni emite nuevo evento.
+    let events_before = ctx.own_events().len();
+    ctx.env.ledger().set_timestamp(deadline + 1);
+    let ret2 = ctx.client().finalize();
+    assert_eq!(ret2, EscrowState::Refunded);
+    // No nuevo evento: el len no debe crecer (state() limpia, así que comparamos antes de state)
+    let events_after = ctx.own_events().len();
+    assert_eq!(events_after, events_before, "idempotente sin segundo evento");
+    assert_eq!(ctx.token_balance(&ctx.buyer), AMOUNT);
+}
+
+#[test]
+fn ghost_engine_attestation_timeout_refunds() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    assert_eq!(ctx.client().state(), EscrowState::EvidenceSubmitted);
+    // attestation_deadline = submit_at + ATTESTATION_PERIOD; submit_at = 0.
+    let deadline = FUNDED_AT + ATTESTATION_PERIOD;
+
+    // deadline -1: aún no finalizable, attest todavía permitido.
+    ctx.env.ledger().set_timestamp(deadline - 1);
+    must_panic(|| { ctx.client().finalize(); });
+    assert_eq!(ctx.client().state(), EscrowState::EvidenceSubmitted);
+
+    // deadline: ghost engine → refund.
+    ctx.env.ledger().set_timestamp(deadline);
+    // attest ya no se admite exactamente en deadline.
+    must_panic(|| ctx.client().attest(&AttestationOutcome::Pass, &report_hash(&ctx.env)));
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Refunded);
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e == Finalized { reason: FinalizeReason::AttestationTimeout }.to_xdr(&ctx.env, &ctx.contract)), "debe emitir Finalized AttestationTimeout");
+    assert_eq!(ctx.client().state(), EscrowState::Refunded);
+    assert_eq!(ctx.token_balance(&ctx.buyer), AMOUNT);
+    assert_eq!(ctx.token_balance(&ctx.contract), 0);
+
+    // deadline +1 e idempotencia.
+    let len_before = ctx.own_events().len();
+    ctx.env.ledger().set_timestamp(deadline + 1);
+    let ret2 = ctx.client().finalize();
+    assert_eq!(ret2, EscrowState::Refunded);
+    let len_after = ctx.own_events().len();
+    assert_eq!(len_after, len_before, "idempotente sin segundo evento");
+    assert_eq!(ctx.token_balance(&ctx.buyer), AMOUNT);
+}
+
+#[test]
+fn finalize_permissionless_any_caller() {
+    let ctx = setup(false);
+    // initialize y fund requieren buyer, pero finalize no.
+    let init = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "initialize",
+        args: (ctx.config(),).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let pull = transfer_sub(&ctx.token, ctx.buyer.clone(), ctx.contract.clone(), AMOUNT, &ctx.env);
+    let fund = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "fund",
+        args: soroban_sdk::Vec::new(&ctx.env),
+        sub_invokes: &[pull],
+    };
+    let mint = MockAuthInvoke {
+        contract: &ctx.token,
+        fn_name: "mint",
+        args: (ctx.buyer.clone(), AMOUNT).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    ctx.env.mock_auths(&[
+        MockAuth { address: &ctx.token_admin, invoke: &mint },
+        MockAuth { address: &ctx.buyer, invoke: &init },
+        MockAuth { address: &ctx.buyer, invoke: &fund },
+    ]);
+    ctx.sac().mint(&ctx.buyer, &AMOUNT);
+    ctx.initialize();
+    ctx.client().fund();
+
+    let deadline = FUNDED_AT + SUBMISSION_PERIOD;
+    ctx.env.ledger().set_timestamp(deadline);
+
+    // Cualquier cuenta (supplier) puede disparar finalize; no hay mock_auth para finalize.
+    ctx.env.mock_auths(&[]);
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Refunded);
+    assert_eq!(ctx.token_balance(&ctx.buyer), AMOUNT, "reembolsa buyer aunque llame supplier");
+}
+
+#[test]
+fn finalize_rejected_in_created_and_before_deadline() {
+    let ctx = setup(true);
+    ctx.initialize();
+    // En CREATED no hay timeout de fondeo.
+    must_panic(|| { ctx.client().finalize(); });
+    assert_eq!(ctx.client().state(), EscrowState::Created);
+
+    ctx.mint_and_fund();
+    // Funded pero antes del deadline → NotFinalizableYet.
+    ctx.env.ledger().set_timestamp(FUNDED_AT + SUBMISSION_PERIOD - 1);
+    must_panic(|| { ctx.client().finalize(); });
+    assert_eq!(ctx.client().state(), EscrowState::Funded);
+}
+
+#[test]
+fn finalize_idempotent_in_terminal_states() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.client().cancel();
+    assert_eq!(ctx.client().state(), EscrowState::Cancelled);
+    // finalize en terminal es no-op.
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Cancelled);
+    assert_eq!(ctx.own_events().len(), 0);
+
+    let ctx2 = setup(true);
+    ctx2.to_attested_pass();
+    ctx2.client().approve();
+    assert_eq!(ctx2.client().state(), EscrowState::Released);
+    let ret2 = ctx2.client().finalize();
+    assert_eq!(ret2, EscrowState::Released);
+    assert_eq!(ctx2.own_events().len(), 0);
+}
+
+#[test]
+fn attest_after_deadline_is_rejected() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    let deadline = FUNDED_AT + ATTESTATION_PERIOD;
+    ctx.env.ledger().set_timestamp(deadline);
+    must_panic(|| ctx.client().attest(&AttestationOutcome::Pass, &report_hash(&ctx.env)));
+    assert_eq!(ctx.client().state(), EscrowState::EvidenceSubmitted);
+    // finalize después sí reembolsa.
+    ctx.client().finalize();
+    assert_eq!(ctx.client().state(), EscrowState::Refunded);
+}
+
+#[test]
+fn submit_after_attestation_deadline_still_evidence_state() {
+    // Tras EVIDENCE_SUBMITTED, el siguiente deadline es de atestación; submit no aplica.
+    // Solo verificamos que submit no es el camino tras evidencia.
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    must_panic(|| ctx.client().submit_evidence(&evidence_hash(&ctx.env)));
+    assert_eq!(ctx.client().state(), EscrowState::EvidenceSubmitted);
+}
+
+#[test]
+fn initialize_validates_new_periods_and_fallback() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.attestation_period = 0;
+    must_panic(|| ctx.client().initialize(&bad));
+
+    let mut bad2 = ctx.config();
+    bad2.objection_period = 0;
+    must_panic(|| ctx.client().initialize(&bad2));
+
+    let mut bad3 = ctx.config();
+    bad3.fallback_outcome = FallbackOutcome::Split;
+    bad3.fallback_split_bps = 0;
+    must_panic(|| ctx.client().initialize(&bad3));
+
+    let mut bad4 = ctx.config();
+    bad4.fallback_outcome = FallbackOutcome::Refund;
+    bad4.fallback_split_bps = 5000;
+    must_panic(|| ctx.client().initialize(&bad4));
+
+    let mut bad5 = ctx.config();
+    bad5.fallback_split_bps = 10_001;
+    must_panic(|| ctx.client().initialize(&bad5));
+}
+
+#[test]
+fn initialize_rejects_same_roles() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.supplier = bad.buyer.clone();
+    must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
+fn no_objection_timeout_releases_to_supplier() {
+    let ctx = setup(true);
+    ctx.to_attested_pass();
+    let attested_at = FUNDED_AT; // attest ocurre en timestamp 0 en este helper
+    let deadline = attested_at + OBJECTION_PERIOD;
+    ctx.env.ledger().set_timestamp(deadline - 1);
+    must_panic(|| { ctx.client().finalize(); });
+    ctx.env.ledger().set_timestamp(deadline);
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Released);
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e == Finalized { reason: FinalizeReason::NoObjection }.to_xdr(&ctx.env, &ctx.contract)), "debe emitir Finalized NoObjection");
+    // state después de verificar evento para no limpiar el buffer antes
+    assert_eq!(ctx.client().state(), EscrowState::Released);
+    assert_eq!(ctx.token_balance(&ctx.supplier), AMOUNT);
+    // idempotente
+    let len_before = ctx.own_events().len();
+    assert_eq!(ctx.client().finalize(), EscrowState::Released);
+    let len_after = ctx.own_events().len();
+    assert_eq!(len_after, len_before);
+}
+
+#[test]
+fn correction_timeout_refunds_buyer() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client().attest(&AttestationOutcome::Fail, &report_hash(&ctx.env));
+    let deadline = FUNDED_AT + CORRECTION_PERIOD;
+    ctx.env.ledger().set_timestamp(deadline - 1);
+    must_panic(|| { ctx.client().finalize(); });
+    ctx.env.ledger().set_timestamp(deadline);
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Refunded);
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e == Finalized { reason: FinalizeReason::CorrectionTimeout }.to_xdr(&ctx.env, &ctx.contract)), "debe emitir Finalized CorrectionTimeout");
+    assert_eq!(ctx.client().state(), EscrowState::Refunded);
+    assert_eq!(ctx.token_balance(&ctx.buyer), AMOUNT);
 }
