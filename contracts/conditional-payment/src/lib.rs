@@ -8,10 +8,13 @@
 //! El fondeo es un pull atómico: `fund()` transfiere `amount` desde el buyer
 //! al contrato y actualiza el estado en la misma operación lógica. Si el pull
 //! falla, la operación no queda parcialmente fondeada. Los saldos enviados
-//! por error antes del fondeo los puede recuperar el buyer con `recover()`;
-//! después del fondeo, los envíos directos quedan fuera del settlement como
-//! limitación conocida. Los vencimientos restantes (objeción, corrección,
-//! disputa, fallback) se completan en P0-04.
+//! por error en `CREATED` solo son recuperables vía `deposit_stray`+`recover`
+//! con tracking por `from` (solo el `from` autenticado recupera lo que él
+//! depositó); los envíos directos vía `TokenClient::transfer` sin tracking
+//! quedan trabados y no son robables por el buyer. Después del fondeo, los
+//! envíos directos quedan fuera del settlement como limitación conocida. Los
+//! vencimientos restantes (objeción, corrección, disputa, fallback) se
+//! completan en P0-04.
 
 #![no_std]
 
@@ -21,7 +24,9 @@ mod types;
 pub use types::{AttestationOutcome, EscrowConfig, EscrowState, FallbackOutcome, FinalizeReason};
 
 use soroban_sdk::{
-    contract, contractimpl, panic_with_error, token::TokenClient, BytesN, Env,
+    contract, contractimpl, panic_with_error,
+    token::TokenClient,
+    Address, BytesN, Env, Map,
 };
 
 use crate::events::{
@@ -365,26 +370,54 @@ impl ConditionalPayment {
         }
     }
 
-    /// El buyer recupera saldos enviados por error al contrato mientras la
-    /// operación sigue en `CREATED` (antes del fondeo). Después del fondeo,
-    /// los envíos directos quedan fuera del settlement (limitación conocida).
-    pub fn recover(env: Env) {
-        let config = read_config(&env);
-        config.buyer.require_auth();
+    /// Registra un depósito stray en CREATED para que luego pueda recuperarse
+    /// con tracking por `from`. Solo el `from` autenticado puede mover sus fondos.
+    /// Esto evita que el buyer robe fondos enviados por un tercero directamente
+    /// al contrato: cada `from` solo recupera lo que él mismo depositó vía este
+    /// método. Los envíos directos vía `TokenClient::transfer` sin pasar por
+    /// `deposit_stray` quedan fuera de tracking y no son recuperables (quedan
+    /// trabados, pero sin robo).
+    pub fn deposit_stray(env: Env, from: Address, amount: i128) {
+        from.require_auth();
         if read_state(&env) != EscrowState::Created {
             panic_with_error!(&env, Error::InvalidState);
         }
-
+        if amount <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
         let current = env.current_contract_address();
-        let stuck = TokenClient::new(&env, &config.token).balance(&current);
-        if stuck == 0 {
+        let config = read_config(&env);
+        TokenClient::new(&env, &config.token).transfer(&from, &current, &amount);
+        let mut balances: Map<Address, i128> =
+            env.storage().instance().get(&DataKey::StrayBalances).unwrap_or(Map::new(&env));
+        let prev = balances.get(from.clone()).unwrap_or(0);
+        balances.set(from.clone(), prev + amount);
+        env.storage().instance().set(&DataKey::StrayBalances, &balances);
+    }
+
+    /// Recupera en CREATED el saldo stray previamente registrado con
+    /// `deposit_stray` para el `from` autenticado. Solo el `from` puede
+    /// recuperar su propio monto; el buyer no puede retirar lo enviado por un
+    /// tercero. Los envíos directos sin tracking quedan fuera de settlement.
+    pub fn recover(env: Env, from: Address) {
+        from.require_auth();
+        if read_state(&env) != EscrowState::Created {
+            panic_with_error!(&env, Error::InvalidState);
+        }
+        let mut balances: Map<Address, i128> =
+            env.storage().instance().get(&DataKey::StrayBalances).unwrap_or(Map::new(&env));
+        let amount = balances.get(from.clone()).unwrap_or(0);
+        if amount == 0 {
             panic_with_error!(&env, Error::NothingToRecover);
         }
-        TokenClient::new(&env, &config.token).transfer(&current, &config.buyer, &stuck);
-
+        let current = env.current_contract_address();
+        let config = read_config(&env);
+        TokenClient::new(&env, &config.token).transfer(&current, &from, &amount);
+        balances.remove(from.clone());
+        env.storage().instance().set(&DataKey::StrayBalances, &balances);
         Recovered {
-            to: config.buyer,
-            amount: stuck,
+            to: from,
+            amount,
         }
         .publish(&env);
     }

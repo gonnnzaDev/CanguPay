@@ -349,17 +349,14 @@ fn buyer_recovers_stray_balance_in_created() {
     let ctx = setup(true);
     ctx.initialize();
     ctx.sac().mint(&ctx.buyer, &STRAY);
-    TokenClient::new(&ctx.env, &ctx.token).transfer(&ctx.buyer, &ctx.contract, &STRAY);
+    // Stray vía deposit_stray con tracking: solo el depositor puede recuperar.
+    ctx.client().deposit_stray(&ctx.buyer, &STRAY);
     assert_eq!(ctx.token_balance(&ctx.contract), STRAY);
 
-    ctx.client().recover();
-    ctx.assert_single_event(
-        Recovered {
-            to: ctx.buyer.clone(),
-            amount: STRAY,
-        }
-        .to_xdr(&ctx.env, &ctx.contract),
-    );
+    ctx.client().recover(&ctx.buyer);
+    // Evento antes de state() para no limpiar
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e == Recovered { to: ctx.buyer.clone(), amount: STRAY }.to_xdr(&ctx.env, &ctx.contract)), "debe emitir Recovered");
     assert_eq!(ctx.token_balance(&ctx.buyer), STRAY, "el buyer recupera todo");
     assert_eq!(ctx.token_balance(&ctx.contract), 0);
     assert_eq!(ctx.client().state(), EscrowState::Created);
@@ -376,7 +373,7 @@ fn recover_only_in_created() {
     ctx.initialize();
     ctx.mint_and_fund();
 
-    must_panic(|| ctx.client().recover());
+    must_panic(|| ctx.client().recover(&ctx.buyer));
     assert_eq!(ctx.client().state(), EscrowState::Funded);
     assert_eq!(ctx.token_balance(&ctx.contract), AMOUNT);
 }
@@ -386,7 +383,7 @@ fn recover_nothing_to_recover_fails() {
     let ctx = setup(true);
     ctx.initialize();
 
-    must_panic(|| ctx.client().recover());
+    must_panic(|| ctx.client().recover(&ctx.buyer));
     assert_eq!(ctx.client().state(), EscrowState::Created);
 }
 
@@ -799,58 +796,49 @@ fn approve_by_supplier_rejected_when_pass() {
 
 #[test]
 fn recover_by_supplier_rejected_in_created() {
-    let ctx = setup(false);
-    let init = MockAuthInvoke {
-        contract: &ctx.contract,
-        fn_name: "initialize",
-        args: (ctx.config(),).into_val(&ctx.env),
-        sub_invokes: &[],
-    };
-    let stray_in = transfer_sub(
-        &ctx.token,
-        ctx.buyer.clone(),
-        ctx.contract.clone(),
-        STRAY,
-        &ctx.env,
-    );
-    let recover = MockAuthInvoke {
-        contract: &ctx.contract,
-        fn_name: "recover",
-        args: soroban_sdk::Vec::new(&ctx.env),
-        sub_invokes: &[],
-    };
-    let mint = MockAuthInvoke {
-        contract: &ctx.token,
-        fn_name: "mint",
-        args: (ctx.buyer.clone(), STRAY).into_val(&ctx.env),
-        sub_invokes: &[],
-    };
-    ctx.env.mock_auths(&[
-        MockAuth {
-            address: &ctx.token_admin,
-            invoke: &mint,
-        },
-        MockAuth {
-            address: &ctx.buyer,
-            invoke: &init,
-        },
-        MockAuth {
-            address: &ctx.buyer,
-            invoke: &stray_in,
-        },
-        MockAuth {
-            address: &ctx.supplier,
-            invoke: &recover,
-        },
-    ]);
-
+    let ctx = setup(true);
     ctx.initialize();
     ctx.sac().mint(&ctx.buyer, &STRAY);
-    TokenClient::new(&ctx.env, &ctx.token).transfer(&ctx.buyer, &ctx.contract, &STRAY);
-    // El supplier autoriza, pero recuperar es solo del buyer: el saldo queda.
-    must_panic(|| ctx.client().recover());
+    ctx.client().deposit_stray(&ctx.buyer, &STRAY);
+    // El supplier intenta recuperar el stray del buyer con su propia auth: falla (NothingToRecover para supplier).
+    must_panic(|| ctx.client().recover(&ctx.supplier));
     assert_eq!(ctx.client().state(), EscrowState::Created);
     assert_eq!(ctx.token_balance(&ctx.contract), STRAY);
+    assert_eq!(ctx.token_balance(&ctx.buyer), 0, "buyer no recuperado por supplier");
+    // El buyer sí puede recuperar su propio stray.
+    ctx.client().recover(&ctx.buyer);
+    assert_eq!(ctx.token_balance(&ctx.buyer), STRAY);
+    assert_eq!(ctx.token_balance(&ctx.contract), 0);
+}
+
+#[test]
+fn third_party_stray_not_stealable_by_buyer() {
+    let ctx = setup(true);
+    ctx.initialize();
+    let third = Address::generate(&ctx.env);
+    ctx.sac().mint(&third, &STRAY);
+    // Tercero deposita stray con tracking.
+    ctx.client().deposit_stray(&third, &STRAY);
+    assert_eq!(ctx.token_balance(&ctx.contract), STRAY);
+    assert_eq!(ctx.token_balance(&third), 0);
+
+    // Buyer intenta robar el stray del tercero usando su propio from: no tiene fondos registrados.
+    must_panic(|| ctx.client().recover(&ctx.buyer));
+    assert_eq!(ctx.token_balance(&ctx.contract), STRAY, "fondos del tercero no robados");
+    assert_eq!(ctx.token_balance(&ctx.buyer), 0);
+
+    // Envío directo sin tracking (vía TokenClient) queda trabado y no es robable ni recuperable.
+    let outsider = Address::generate(&ctx.env);
+    ctx.sac().mint(&outsider, &STRAY);
+    TokenClient::new(&ctx.env, &ctx.token).transfer(&outsider, &ctx.contract, &STRAY);
+    assert_eq!(ctx.token_balance(&ctx.contract), STRAY * 2);
+    must_panic(|| ctx.client().recover(&outsider));
+    assert_eq!(ctx.token_balance(&ctx.contract), STRAY * 2, "envío directo sin tracking no es recuperable");
+
+    // El tercero sí puede recuperar su stray trackeado.
+    ctx.client().recover(&third);
+    assert_eq!(ctx.token_balance(&third), STRAY);
+    assert_eq!(ctx.token_balance(&ctx.contract), STRAY, "solo el stray trackeado del tercero fue devuelto");
 }
 
 // ── P0-03: vencimientos finalize() ──
@@ -860,12 +848,6 @@ fn ghost_supplier_submission_timeout_refunds() {
     let ctx = setup(true);
     ctx.initialize();
     ctx.mint_and_fund();
-    {
-        let events = ctx.own_events();
-        std::println!("GHOST after fund events len {}: {:?}", events.len(), events);
-        let expected = Funded { funded_at: FUNDED_AT, submission_deadline: FUNDED_AT + SUBMISSION_PERIOD }.to_xdr(&ctx.env, &ctx.contract);
-        std::println!("Expected Funded: {:?}", expected);
-    }
     assert_eq!(ctx.client().state(), EscrowState::Funded);
     let deadline = FUNDED_AT + SUBMISSION_PERIOD;
 
@@ -1067,9 +1049,26 @@ fn initialize_validates_new_periods_and_fallback() {
 #[test]
 fn initialize_rejects_same_roles() {
     let ctx = setup(true);
+    // buyer == supplier
     let mut bad = ctx.config();
     bad.supplier = bad.buyer.clone();
     must_panic(|| ctx.client().initialize(&bad));
+
+    // buyer == engine
+    let mut bad2 = ctx.config();
+    bad2.engine = bad2.buyer.clone();
+    must_panic(|| ctx.client().initialize(&bad2));
+
+    // supplier == engine
+    let mut bad3 = ctx.config();
+    bad3.engine = bad3.supplier.clone();
+    must_panic(|| ctx.client().initialize(&bad3));
+
+    // las tres iguales
+    let mut bad4 = ctx.config();
+    bad4.supplier = bad4.buyer.clone();
+    bad4.engine = bad4.buyer.clone();
+    must_panic(|| ctx.client().initialize(&bad4));
 }
 
 #[test]

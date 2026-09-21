@@ -73,6 +73,7 @@ pub enum DataKey {
     DisputedAt,
     ResolutionDeadline,
     CorrectionAttempts,
+    StrayBalances,
 }
 
 #[contracterror]
