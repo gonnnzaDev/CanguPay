@@ -68,14 +68,6 @@ pub struct Approved {
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Recovered {
-    #[topic]
-    pub to: Address,
-    pub amount: i128,
-}
-
-#[contractevent]
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Finalized {
     pub reason: FinalizeReason,
 }

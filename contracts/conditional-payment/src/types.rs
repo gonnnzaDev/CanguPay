@@ -73,7 +73,6 @@ pub enum DataKey {
     DisputedAt,
     ResolutionDeadline,
     CorrectionAttempts,
-    StrayBalances,
 }
 
 #[contracterror]
@@ -86,7 +85,6 @@ pub enum Error {
     InvalidState = 5,
     SubmissionDeadlinePassed = 7,
     AlreadyApproved = 8,
-    NothingToRecover = 9,
     NotFinalizableYet = 10,
     InvalidAttestationPeriod = 11,
     InvalidObjectionPeriod = 12,

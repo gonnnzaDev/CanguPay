@@ -7,14 +7,11 @@
 //!
 //! El fondeo es un pull atómico: `fund()` transfiere `amount` desde el buyer
 //! al contrato y actualiza el estado en la misma operación lógica. Si el pull
-//! falla, la operación no queda parcialmente fondeada. Los saldos enviados
-//! por error en `CREATED` solo son recuperables vía `deposit_stray`+`recover`
-//! con tracking por `from` (solo el `from` autenticado recupera lo que él
-//! depositó); los envíos directos vía `TokenClient::transfer` sin tracking
-//! quedan trabados y no son robables por el buyer. Después del fondeo, los
-//! envíos directos quedan fuera del settlement como limitación conocida. Los
-//! vencimientos restantes (objeción, corrección, disputa, fallback) se
-//! completan en P0-04.
+//! falla, la operación no queda parcialmente fondeada. Los envíos directos al
+//! contrato no forman parte del escrow y no tienen vía de recuperación en P0.
+//! Después del fondeo, los envíos directos quedan fuera del settlement como
+//! limitación conocida. Los vencimientos restantes (objeción, corrección,
+//! disputa, fallback) se completan en P0-04.
 
 #![no_std]
 
@@ -23,28 +20,29 @@ mod types;
 
 pub use types::{AttestationOutcome, EscrowConfig, EscrowState, FallbackOutcome, FinalizeReason};
 
-use soroban_sdk::{
-    contract, contractimpl, panic_with_error,
-    token::TokenClient,
-    Address, BytesN, Env, Map,
-};
+use soroban_sdk::{contract, contractimpl, panic_with_error, token::TokenClient, BytesN, Env};
 
 use crate::events::{
     Approved, Attested, Cancelled, EscrowCreated, EvidenceSubmitted, Finalized, Funded,
-    Recovered,
 };
 use crate::types::{DataKey, Error};
 
 fn read_config(env: &Env) -> EscrowConfig {
-    env.storage().instance().get(&DataKey::Config).unwrap_or_else(|| {
-        panic_with_error!(env, Error::NotInitialized);
-    })
+    env.storage()
+        .instance()
+        .get(&DataKey::Config)
+        .unwrap_or_else(|| {
+            panic_with_error!(env, Error::NotInitialized);
+        })
 }
 
 fn read_state(env: &Env) -> EscrowState {
-    env.storage().instance().get(&DataKey::State).unwrap_or_else(|| {
-        panic_with_error!(env, Error::NotInitialized);
-    })
+    env.storage()
+        .instance()
+        .get(&DataKey::State)
+        .unwrap_or_else(|| {
+            panic_with_error!(env, Error::NotInitialized);
+        })
 }
 
 #[contract]
@@ -100,7 +98,9 @@ impl ConditionalPayment {
         }
 
         env.storage().instance().set(&DataKey::Config, &config);
-        env.storage().instance().set(&DataKey::State, &EscrowState::Created);
+        env.storage()
+            .instance()
+            .set(&DataKey::State, &EscrowState::Created);
 
         EscrowCreated {
             buyer: config.buyer,
@@ -127,7 +127,9 @@ impl ConditionalPayment {
             panic_with_error!(&env, Error::InvalidState);
         }
 
-        env.storage().instance().set(&DataKey::State, &EscrowState::Cancelled);
+        env.storage()
+            .instance()
+            .set(&DataKey::State, &EscrowState::Cancelled);
         Cancelled { by: config.buyer }.publish(&env);
     }
 
@@ -150,10 +152,10 @@ impl ConditionalPayment {
             .checked_add(config.submission_period)
             .expect("submission_period overflow");
 
-        env.storage().instance().set(&DataKey::State, &EscrowState::Funded);
         env.storage()
             .instance()
-            .set(&DataKey::FundedAt, &now);
+            .set(&DataKey::State, &EscrowState::Funded);
+        env.storage().instance().set(&DataKey::FundedAt, &now);
         env.storage()
             .instance()
             .set(&DataKey::SubmissionDeadline, &submission_deadline);
@@ -227,7 +229,9 @@ impl ConditionalPayment {
         };
         let now = env.ledger().timestamp();
         env.storage().instance().set(&DataKey::State, &state);
-        env.storage().instance().set(&DataKey::ReportHash, &report_hash);
+        env.storage()
+            .instance()
+            .set(&DataKey::ReportHash, &report_hash);
         env.storage().instance().set(&DataKey::AttestedAt, &now);
 
         Attested {
@@ -249,7 +253,9 @@ impl ConditionalPayment {
         let current = env.current_contract_address();
         TokenClient::new(&env, &config.token).transfer(&current, &config.supplier, &config.amount);
 
-        env.storage().instance().set(&DataKey::State, &EscrowState::Released);
+        env.storage()
+            .instance()
+            .set(&DataKey::State, &EscrowState::Released);
 
         Approved {
             to: config.supplier,
@@ -275,9 +281,7 @@ impl ConditionalPayment {
             | EscrowState::Released
             | EscrowState::Refunded
             | EscrowState::Split
-            | EscrowState::Disputed => {
-                return state;
-            }
+            | EscrowState::Disputed => state,
             EscrowState::Created => {
                 panic_with_error!(&env, Error::NotFinalizableYet);
             }
@@ -290,8 +294,11 @@ impl ConditionalPayment {
                 if now < deadline {
                     panic_with_error!(&env, Error::NotFinalizableYet);
                 }
-                TokenClient::new(&env, &config.token)
-                    .transfer(&current, &config.buyer, &config.amount);
+                TokenClient::new(&env, &config.token).transfer(
+                    &current,
+                    &config.buyer,
+                    &config.amount,
+                );
                 env.storage()
                     .instance()
                     .set(&DataKey::State, &EscrowState::Refunded);
@@ -299,7 +306,7 @@ impl ConditionalPayment {
                     reason: FinalizeReason::SubmissionTimeout,
                 }
                 .publish(&env);
-                return EscrowState::Refunded;
+                EscrowState::Refunded
             }
             EscrowState::EvidenceSubmitted => {
                 let deadline: u64 = env
@@ -310,8 +317,11 @@ impl ConditionalPayment {
                 if now < deadline {
                     panic_with_error!(&env, Error::NotFinalizableYet);
                 }
-                TokenClient::new(&env, &config.token)
-                    .transfer(&current, &config.buyer, &config.amount);
+                TokenClient::new(&env, &config.token).transfer(
+                    &current,
+                    &config.buyer,
+                    &config.amount,
+                );
                 env.storage()
                     .instance()
                     .set(&DataKey::State, &EscrowState::Refunded);
@@ -319,22 +329,21 @@ impl ConditionalPayment {
                     reason: FinalizeReason::AttestationTimeout,
                 }
                 .publish(&env);
-                return EscrowState::Refunded;
+                EscrowState::Refunded
             }
             EscrowState::AttestedPass => {
-                let attested_at: u64 = env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::AttestedAt)
-                    .unwrap();
+                let attested_at: u64 = env.storage().instance().get(&DataKey::AttestedAt).unwrap();
                 let deadline = attested_at
                     .checked_add(config.objection_period)
                     .expect("objection_period overflow");
                 if now < deadline {
                     panic_with_error!(&env, Error::NotFinalizableYet);
                 }
-                TokenClient::new(&env, &config.token)
-                    .transfer(&current, &config.supplier, &config.amount);
+                TokenClient::new(&env, &config.token).transfer(
+                    &current,
+                    &config.supplier,
+                    &config.amount,
+                );
                 env.storage()
                     .instance()
                     .set(&DataKey::State, &EscrowState::Released);
@@ -342,22 +351,21 @@ impl ConditionalPayment {
                     reason: FinalizeReason::NoObjection,
                 }
                 .publish(&env);
-                return EscrowState::Released;
+                EscrowState::Released
             }
             EscrowState::AttestedFail => {
-                let attested_at: u64 = env
-                    .storage()
-                    .instance()
-                    .get(&DataKey::AttestedAt)
-                    .unwrap();
+                let attested_at: u64 = env.storage().instance().get(&DataKey::AttestedAt).unwrap();
                 let deadline = attested_at
                     .checked_add(config.correction_period)
                     .expect("correction_period overflow");
                 if now < deadline {
                     panic_with_error!(&env, Error::NotFinalizableYet);
                 }
-                TokenClient::new(&env, &config.token)
-                    .transfer(&current, &config.buyer, &config.amount);
+                TokenClient::new(&env, &config.token).transfer(
+                    &current,
+                    &config.buyer,
+                    &config.amount,
+                );
                 env.storage()
                     .instance()
                     .set(&DataKey::State, &EscrowState::Refunded);
@@ -365,61 +373,9 @@ impl ConditionalPayment {
                     reason: FinalizeReason::CorrectionTimeout,
                 }
                 .publish(&env);
-                return EscrowState::Refunded;
+                EscrowState::Refunded
             }
         }
-    }
-
-    /// Registra un depósito stray en CREATED para que luego pueda recuperarse
-    /// con tracking por `from`. Solo el `from` autenticado puede mover sus fondos.
-    /// Esto evita que el buyer robe fondos enviados por un tercero directamente
-    /// al contrato: cada `from` solo recupera lo que él mismo depositó vía este
-    /// método. Los envíos directos vía `TokenClient::transfer` sin pasar por
-    /// `deposit_stray` quedan fuera de tracking y no son recuperables (quedan
-    /// trabados, pero sin robo).
-    pub fn deposit_stray(env: Env, from: Address, amount: i128) {
-        from.require_auth();
-        if read_state(&env) != EscrowState::Created {
-            panic_with_error!(&env, Error::InvalidState);
-        }
-        if amount <= 0 {
-            panic_with_error!(&env, Error::InvalidAmount);
-        }
-        let current = env.current_contract_address();
-        let config = read_config(&env);
-        TokenClient::new(&env, &config.token).transfer(&from, &current, &amount);
-        let mut balances: Map<Address, i128> =
-            env.storage().instance().get(&DataKey::StrayBalances).unwrap_or(Map::new(&env));
-        let prev = balances.get(from.clone()).unwrap_or(0);
-        balances.set(from.clone(), prev + amount);
-        env.storage().instance().set(&DataKey::StrayBalances, &balances);
-    }
-
-    /// Recupera en CREATED el saldo stray previamente registrado con
-    /// `deposit_stray` para el `from` autenticado. Solo el `from` puede
-    /// recuperar su propio monto; el buyer no puede retirar lo enviado por un
-    /// tercero. Los envíos directos sin tracking quedan fuera de settlement.
-    pub fn recover(env: Env, from: Address) {
-        from.require_auth();
-        if read_state(&env) != EscrowState::Created {
-            panic_with_error!(&env, Error::InvalidState);
-        }
-        let mut balances: Map<Address, i128> =
-            env.storage().instance().get(&DataKey::StrayBalances).unwrap_or(Map::new(&env));
-        let amount = balances.get(from.clone()).unwrap_or(0);
-        if amount == 0 {
-            panic_with_error!(&env, Error::NothingToRecover);
-        }
-        let current = env.current_contract_address();
-        let config = read_config(&env);
-        TokenClient::new(&env, &config.token).transfer(&current, &from, &amount);
-        balances.remove(from.clone());
-        env.storage().instance().set(&DataKey::StrayBalances, &balances);
-        Recovered {
-            to: from,
-            amount,
-        }
-        .publish(&env);
     }
 
     /// Lecturas para la UI: estado y configuración vigentes.
