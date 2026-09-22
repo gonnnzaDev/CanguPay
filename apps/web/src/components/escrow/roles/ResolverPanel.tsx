@@ -21,9 +21,6 @@ export const ResolverPanel: React.FC<ResolverPanelProps> = ({ data }) => {
             <h3 className="text-xs font-bold uppercase tracking-wider text-purple-950 dark:text-purple-200">
               Panel del Árbitro Neutral (Resolver Perspective)
             </h3>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Tribunal de arbitraje de la operación y expediente probatorio
-            </p>
           </div>
         </div>
         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 dark:text-purple-300 uppercase">
@@ -74,18 +71,6 @@ export const ResolverPanel: React.FC<ResolverPanelProps> = ({ data }) => {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Resolver Guidance */}
-      <div className="p-3 rounded-lg bg-purple-500/5 dark:bg-purple-950/30 border border-purple-500/20 dark:border-purple-500/30 text-xs text-neutral-700 dark:text-neutral-300">
-        <span className="font-bold text-purple-800 dark:text-purple-300 uppercase text-[10px] block mb-0.5">
-          Facultad Jurisdiccional:
-        </span>
-        <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
-          {data.status === "DISPUTED"
-            ? "Como árbitro neutral designado, estás facultado para dirimir este conflicto mediante invocación vinculante en Soroban: Liberar a proveedor (Release), Reembolsar a comprador (Refund), o Dividir proporcionalmente (Split)."
-            : "Esta operación no se encuentra actualmente en estado de disputa. La intervención del árbitro sólo se activa si alguna de las partes objeta el dictamen."}
-        </p>
       </div>
     </div>
   );

@@ -27,9 +27,6 @@ export const SupplierPanel: React.FC<SupplierPanelProps> = ({
             <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-950 dark:text-indigo-200">
               Panel de Control del Proveedor (Supplier Perspective)
             </h3>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Fondos reservados en custodia y requisitos de entrega física
-            </p>
           </div>
         </div>
         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 dark:bg-indigo-500/30 text-indigo-800 dark:text-indigo-300 uppercase">
@@ -80,26 +77,6 @@ export const SupplierPanel: React.FC<SupplierPanelProps> = ({
             {data.hashes.evidenceBundleHash ? "Hash computado off-chain" : "Requiere subir remisión"}
           </span>
         </div>
-      </div>
-
-      {/* Supplier Guidance */}
-      <div className="p-3 rounded-lg bg-indigo-500/5 dark:bg-indigo-950/30 border border-indigo-500/20 dark:border-indigo-500/30 text-xs text-neutral-700 dark:text-neutral-300">
-        <span className="font-bold text-indigo-800 dark:text-indigo-300 uppercase text-[10px] block mb-0.5">
-          Estado de Ejecución:
-        </span>
-        <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
-          {data.status === "CREATED"
-            ? "El comprador aún no ha bloqueado los fondos. No realice el despacho hasta que el estado avance a FONDEADO."
-            : data.status === "FUNDED"
-              ? "Fondos asegurados en el contrato. Presente el lote documental (remisión / conocimiento de embarque / factura) antes del vencimiento."
-              : data.status === "ATTESTED_FAIL"
-                ? "El motor de atestación observó discrepancias. Tienes derecho a 1 intento de corrección técnica o a elevar disputa al árbitro."
-                : data.status === "ATTESTED_PASS"
-                  ? "Atestación técnica aprobada por el motor. El comprador se encuentra en ventana de revisión para liberación final."
-                  : data.status === "DISPUTED"
-                    ? "Operación en arbitraje neutral. El resolver determinará la distribución de fondos definitiva."
-                    : "Operación liquidada."}
-        </p>
       </div>
     </div>
   );

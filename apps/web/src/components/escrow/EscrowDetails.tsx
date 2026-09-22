@@ -476,19 +476,14 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
       {/* Permissionless Finalize Alert Banner (when deadline expired or simulated) */}
       {isFinalizeTriggerable && !isTerminal && (
-        <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shadow-xs">
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+        <div className="p-3 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
               <ClockIcon size={16} />
             </div>
-            <div>
-              <span className="font-bold tracking-wider uppercase text-[11px] block">
-                Vencimiento Contractual Alcanzado
-              </span>
-              <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed">
-                El plazo límite ha expirado. Cualquier cuenta conectada (incluyendo observadores) está facultada para invocar <code className="font-bold">finalize()</code> y ejecutar la liquidación según la regla de fallback pactada ({data.fallbackOutcome || "SPLIT"}).
-              </p>
-            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+              Plazo límite alcanzado · Liquidación por fallback ({data.fallbackOutcome || "SPLIT"}) habilitada.
+            </p>
           </div>
           <span className="shrink-0 px-2.5 py-1 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200 font-bold text-[10px] tracking-wider uppercase border border-amber-500/30">
             PERMISIÓN UNIVERSAL
@@ -598,13 +593,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       )}
 
       {viewerRole === null && (
-        <div className="p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/70 text-neutral-600 dark:text-neutral-300 font-mono text-[11px] flex items-center justify-between">
-          <span>
-            Conecte su wallet Freighter para detectar automáticamente su rol en este contrato (Comprador, Proveedor o Árbitro).
-          </span>
-          <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold uppercase">
-            DETECCIÓN DINÁMICA
-          </span>
+        <div className="p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/70 text-neutral-600 dark:text-neutral-400 font-mono text-xs">
+          Conecta tu wallet Freighter para interactuar con el contrato.
         </div>
       )}
 
@@ -639,10 +629,6 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               </div>
             );
           })()}
-
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-            Reserva atómica en contrato inteligente
-          </p>
         </div>
 
         {/* Metric 2: Active Actor */}
@@ -662,9 +648,6 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             <h4 className="text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
               {actorMeta.label}
             </h4>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
-              {actorMeta.description}
-            </p>
           </div>
         </div>
       </div>
@@ -836,22 +819,17 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         </div>
 
         {/* Fallback Contractual Configuration Card */}
-        <div className="p-3.5 rounded-lg border border-teal-500/20 bg-teal-500/[0.02] dark:bg-teal-500/[0.04] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="space-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-teal-800 dark:text-teal-300 tracking-wider">
-              Cláusula Fallback Preacordada
-            </span>
-            <p className="text-xs text-neutral-700 dark:text-neutral-300">
-              Liquidación por defecto:{" "}
-              <span className="font-bold text-teal-700 dark:text-teal-400">
-                {data.fallbackOutcome || "SPLIT"}
-              </span>{" "}
-              ({data.fallbackOutcome === "SPLIT" ? fallbackBpsLabel : data.fallbackOutcome === "RELEASE" ? "100% Proveedor" : "100% Comprador"})
-            </p>
-          </div>
-          <span className="text-[10px] text-neutral-400 sm:text-right max-w-xs">
-            Ejecutable mediante <code className="text-teal-600 dark:text-teal-400">finalize()</code> tras vencer el plazo sin acción.
+        <div className="p-3.5 rounded-lg border border-teal-500/20 bg-teal-500/[0.02] dark:bg-teal-500/[0.04]">
+          <span className="text-[10px] uppercase font-bold text-teal-800 dark:text-teal-300 tracking-wider block mb-0.5">
+            Cláusula Fallback Preacordada
           </span>
+          <p className="text-xs text-neutral-700 dark:text-neutral-300">
+            Liquidación por defecto:{" "}
+            <span className="font-bold text-teal-700 dark:text-teal-400">
+              {data.fallbackOutcome || "SPLIT"}
+            </span>{" "}
+            ({data.fallbackOutcome === "SPLIT" ? fallbackBpsLabel : data.fallbackOutcome === "RELEASE" ? "100% Proveedor" : "100% Comprador"})
+          </p>
         </div>
       </div>
 
@@ -1020,11 +998,6 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           </a>
         )}
       </div>
-
-      {/* Audit Disclaimer */}
-      <p className="text-[11px] text-neutral-400 dark:text-neutral-500 border-t border-neutral-200/60 dark:border-neutral-800/60 pt-3 font-mono">
-        Nota de auditoría: Los plazos contractuales se computan en función del timestamp oficial del ledger (<code className="text-[10px]">env.ledger().timestamp()</code>), no de la hora del dispositivo.
-      </p>
     </div>
   );
 };

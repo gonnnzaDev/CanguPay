@@ -151,9 +151,6 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
               >
                 Crear Nuevo Escrow Comercial
               </h2>
-              <p className="text-xs text-neutral-500 font-mono">
-                Inicialización de contrato de custodia Soroban (P0)
-              </p>
             </div>
           </div>
           <button

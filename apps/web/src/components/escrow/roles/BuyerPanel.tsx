@@ -31,14 +31,21 @@ export const BuyerPanel: React.FC<BuyerPanelProps> = ({
             <h3 className="text-xs font-bold uppercase tracking-wider text-teal-950 dark:text-teal-200">
               Panel de Control del Comprador (Buyer Perspective)
             </h3>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Resumen ejecutivo y lista de control contractual de la orden
-            </p>
           </div>
         </div>
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/20 dark:bg-teal-500/30 text-teal-800 dark:text-teal-300 uppercase">
-          ROL: COMPRADOR
-        </span>
+        <div className="flex items-center gap-2">
+          {data.status === "CREATED" && onCreateEscrow && (
+            <button
+              onClick={onCreateEscrow}
+              className="shrink-0 px-3 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-[11px] transition-colors shadow-2xs cursor-pointer"
+            >
+              + Crear Nuevo Escrow
+            </button>
+          )}
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/20 dark:bg-teal-500/30 text-teal-800 dark:text-teal-300 uppercase">
+            ROL: COMPRADOR
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
@@ -83,38 +90,6 @@ export const BuyerPanel: React.FC<BuyerPanelProps> = ({
             {data.fallbackOutcome || "SPLIT"} ({data.fallbackOutcome === "SPLIT" ? fallbackBpsLabel : "100%"})
           </span>
         </div>
-      </div>
-
-      {/* Buyer Guidance Prompt */}
-      <div className="p-3 rounded-lg bg-teal-500/5 dark:bg-teal-950/30 border border-teal-500/20 dark:border-teal-500/30 text-xs text-neutral-700 dark:text-neutral-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <span className="font-bold text-teal-800 dark:text-teal-300 uppercase text-[10px] block mb-0.5">
-            Acción Recomendada:
-          </span>
-          <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
-            {data.status === "CREATED"
-              ? "La orden está creada pero los fondos aún no han sido transferidos. Puedes fondear el depósito en custodia o crear una orden adicional."
-              : data.status === "FUNDED"
-                ? "Los fondos están asegurados en Soroban. Esperando que el proveedor remita el lote documental de entrega física."
-                : data.status === "EVIDENCE_SUBMITTED"
-                  ? "El lote documental ha sido recibido. El motor de atestación determinista está evaluando la evidencia."
-                  : data.status === "ATTESTED_PASS"
-                    ? "Atestación favorable emitida por el motor. Tienes ventana de objeción activa para aprobar la liberación o disputar."
-                    : data.status === "ATTESTED_FAIL"
-                      ? "El motor observó discrepancias en los documentos. El proveedor cuenta con un intento de corrección técnica."
-                      : data.status === "DISPUTED"
-                        ? "La operación se encuentra bajo revisión del árbitro neutral (resolver). Se espera dictamen vinculante."
-                        : "La operación se encuentra liquidada en un estado inmutable."}
-          </p>
-        </div>
-        {data.status === "CREATED" && onCreateEscrow && (
-          <button
-            onClick={onCreateEscrow}
-            className="shrink-0 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-[11px] transition-colors shadow-2xs cursor-pointer"
-          >
-            + Crear Nuevo Escrow
-          </button>
-        )}
       </div>
     </div>
   );

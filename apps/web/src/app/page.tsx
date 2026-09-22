@@ -109,9 +109,6 @@ export default function Home() {
         <span className="font-bold tracking-wider uppercase shrink-0">
           DATOS MOCK · SIN LECTURA RPC
         </span>
-        <span className="hidden sm:inline text-amber-800 dark:text-amber-300">
-          — Visualización de interfaz para desarrollo. Lectura y mutaciones reales de contrato pendientes de RPC.
-        </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 shrink-0">
         {/* Simular Vencimiento Toggle */}
