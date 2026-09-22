@@ -565,15 +565,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       )}
 
       {/* Primary Metrics: Amount & Current Turn */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Metric 1: Amount */}
-        <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs flex flex-col justify-between min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-mono truncate">
+        <div className="p-6 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs flex flex-col justify-between min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-mono truncate">
               {t("metrics.funds_under_custody")}
             </span>
             <span className="text-[10px] font-mono text-teal-700 dark:text-teal-300 font-bold border border-teal-500/30 bg-teal-500/5 px-2 py-0.5 rounded shrink-0">
-              {data.asset} {"//"} SAC
+              SAC · Stellar Testnet
             </span>
           </div>
 
@@ -581,15 +581,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             const [intPart, decPart] = data.amount.split(".");
             return (
               <div className="my-2 flex items-baseline gap-1 font-mono flex-wrap min-w-0">
-                <span className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 dark:text-white truncate">
+                <span className="text-4xl sm:text-5xl font-extrabold tracking-tight text-neutral-950 dark:text-white truncate">
                   {intPart}
                 </span>
                 {decPart !== undefined && (
-                  <span className="text-xs sm:text-sm font-semibold text-neutral-400 dark:text-neutral-500 shrink-0">
+                  <span className="text-xl sm:text-2xl font-medium text-neutral-400 dark:text-neutral-500 shrink-0">
                     .{decPart}
                   </span>
                 )}
-                <span className="text-xs font-mono font-bold text-teal-600 dark:text-teal-400 ml-1 shrink-0">
+                <span className="text-base sm:text-lg font-mono font-bold text-teal-600 dark:text-teal-400 ml-2 shrink-0">
                   {data.asset}
                 </span>
               </div>
@@ -598,10 +598,10 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         </div>
 
         {/* Metric 2: Active Actor */}
-        <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs md:col-span-2 flex flex-col justify-between font-mono">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest flex items-center gap-1.5">
-              <UserIcon size={13} />
+        <div className="p-6 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs flex flex-col justify-between font-mono">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest flex items-center gap-1.5">
+              <UserIcon size={14} />
               {t("metrics.action_turn")}
             </span>
             {!isTerminal && (
@@ -610,8 +610,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               </span>
             )}
           </div>
-          <div className="mt-2">
-            <h4 className="text-base font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+          <div className="my-auto pt-2">
+            <h4 className="text-lg sm:text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
               {t(`actors.${activeActor}`)}
             </h4>
           </div>
