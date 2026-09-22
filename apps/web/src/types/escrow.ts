@@ -5,6 +5,8 @@
  * Decoupled from chain bindings and RPC layers.
  */
 
+import { UserRole } from "./wallet";
+
 export type EscrowStatus =
   | "CREATED"
   | "FUNDED"
@@ -97,3 +99,29 @@ export function isTerminalStatus(status: EscrowStatus): boolean {
     status === "SPLIT"
   );
 }
+
+/**
+ * Pure domain function: derives the human role from the connected wallet
+ * and the escrow participants configuration.
+ *
+ * wallet == config.parties.buyer    -> buyer
+ * wallet == config.parties.supplier -> supplier
+ * wallet == config.parties.resolver -> resolver
+ * any other address                 -> observer
+ * no wallet connected               -> null
+ */
+export function deriveWalletRole(
+  walletAddress: string | null | undefined,
+  parties?: EscrowParties | null
+): UserRole | null {
+  if (!walletAddress) return null;
+  if (!parties) return "observer";
+
+  const addr = walletAddress.trim();
+  if (parties.buyer && addr === parties.buyer.trim()) return "buyer";
+  if (parties.supplier && addr === parties.supplier.trim()) return "supplier";
+  if (parties.resolver && addr === parties.resolver.trim()) return "resolver";
+
+  return "observer";
+}
+

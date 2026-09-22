@@ -11,7 +11,7 @@ import {
   CloseIcon,
 } from "@/components/icons";
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
-import { ProfileSelector } from "@/components/wallet/ProfileSelector";
+import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
 import { UserRole } from "@/types/wallet";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
@@ -19,6 +19,7 @@ import {
   EscrowDetailsData,
   EscrowStatus,
   isTerminalStatus,
+  deriveWalletRole,
 } from "@/types/escrow";
 
 interface TransactionFeedback {
@@ -129,7 +130,7 @@ export default function Home() {
   const [isEmpty, setIsEmpty] = useState<boolean>(false);
 
   const {
-    activeProfile,
+    address,
     network,
     networkPassphrase,
     isExactTestnet,
@@ -220,19 +221,15 @@ export default function Home() {
           nextStatus: "RELEASED",
         };
       }
-    } else if (role === "engine") {
-      if (status === "FUNDED") {
-        return {
-          label: "Atestar Reglas",
-          fullName: "Atestar Reglas del Contrato",
-          nextStatus: "ATTESTED_PASS",
-        };
-      }
     }
     return null;
   };
 
-  const actionInfo = getActionForRoleAndStatus(activeProfile.role, activeScenario);
+  const currentData = isEmpty ? null : mockEscrows[activeScenario] || null;
+  const derivedRole = deriveWalletRole(address, currentData?.parties);
+  const actionInfo = derivedRole
+    ? getActionForRoleAndStatus(derivedRole, activeScenario)
+    : null;
 
   const actionSlot = actionInfo ? (
     <button
@@ -338,8 +335,6 @@ export default function Home() {
     </div>
   ) : null;
 
-  const currentData = isEmpty ? null : mockEscrows[activeScenario] || null;
-
   return (
     <div className="min-h-screen font-sans antialiased selection:bg-teal-500/20">
       {/* Top Navbar (Pinned with progressive fade mask layer - zero hard cutoffs) */}
@@ -360,16 +355,22 @@ export default function Home() {
             </span>
             <div
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200/80 dark:border-neutral-800/80 bg-neutral-100/70 dark:bg-neutral-900/70 text-neutral-700 dark:text-neutral-300 font-mono text-[11px] font-bold tracking-wider uppercase shadow-2xs"
-              title={`Rol detectado en el contrato: ${activeProfile.roleLabel}`}
+              title={
+                derivedRole
+                  ? `Rol detectado en el contrato: ${derivedRole.toUpperCase()}`
+                  : "Sin wallet conectada para determinar rol"
+              }
             >
-              <span>{activeProfile.role}</span>
-              <RoleIcon role={activeProfile.role} size={13} className="text-teal-600 dark:text-teal-400" />
+              <span>ROL: {derivedRole ? derivedRole.toUpperCase() : "—"}</span>
+              {derivedRole && (
+                <RoleIcon role={derivedRole} size={13} className="text-teal-600 dark:text-teal-400" />
+              )}
             </div>
           </div>
 
-          {/* Header Controls: Profile/Wallet Selector, Theme Mode & Dynamic Network */}
+          {/* Header Controls: Wallet Connection, Theme Mode & Dynamic Network */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <ProfileSelector />
+            <WalletConnection />
             <ThemeSwitcher />
 
             {/* Technical Network Indicator with NetworkIcon */}

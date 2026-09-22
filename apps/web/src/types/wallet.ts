@@ -2,18 +2,11 @@ export type WalletNetwork = "TESTNET" | "PUBLIC" | "FUTURENET" | "STANDALONE" | 
 
 export const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
 
-export type UserRole = "buyer" | "supplier" | "resolver" | "engine" | "observer";
-
-export interface UserProfile {
-  id: string;
-  role: UserRole;
-  roleLabel: string;
-  name: string;
-  address: string;
-  balance: string;
-  assetCode: string;
-  isExternalWallet?: boolean;
-}
+/**
+ * Human roles derived strictly from connected wallet address against escrow parties.
+ * Engine is not a human role and is not selectable.
+ */
+export type UserRole = "buyer" | "supplier" | "resolver" | "observer";
 
 export interface WalletState {
   isFreighterInstalled: boolean;
@@ -26,11 +19,8 @@ export interface WalletState {
   isNetworkAllowed: boolean;
   isSigningBlocked: boolean;
   isMainnetBlocked: boolean;
-  activeProfile: UserProfile;
-  availableProfiles: UserProfile[];
   connectFreighter: () => Promise<void>;
   disconnectFreighter: () => void;
-  switchProfile: (role: UserRole) => void;
   signTransactionGuard: (xdr: string) => Promise<{
     success: boolean;
     error?: string;

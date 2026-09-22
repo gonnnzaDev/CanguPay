@@ -17,51 +17,10 @@ import {
   signTransaction as signFreighterTransaction,
 } from "@stellar/freighter-api";
 import {
-  UserProfile,
-  UserRole,
   WalletNetwork,
   WalletState,
   TESTNET_PASSPHRASE,
 } from "@/types/wallet";
-
-const DEMO_PROFILES: UserProfile[] = [
-  {
-    id: "buyer-profile",
-    role: "buyer",
-    roleLabel: "Comprador (Buyer)",
-    name: "Acme Industrial Corp",
-    address: "GBUYER4X9Z2K1L3M4N5O6P7Q8R9S0T1U2V3W4X9Z",
-    balance: "50,000.0000000",
-    assetCode: "CPUSD",
-  },
-  {
-    id: "supplier-profile",
-    role: "supplier",
-    roleLabel: "Proveedor (Supplier)",
-    name: "Valle Logistics S.A.",
-    address: "GSUPPLIER8K2L3M4N5O6P7Q8R9S0T1U2V3W4X8K2L",
-    balance: "12,500.0000000",
-    assetCode: "CPUSD",
-  },
-  {
-    id: "resolver-profile",
-    role: "resolver",
-    roleLabel: "Árbitro (Resolver)",
-    name: "Tribunal Arbitral de Comercio",
-    address: "GRESOLVER9P0R1S2T3U4V5W6X7Y8Z9A0B1C2D9P0R",
-    balance: "5,000.0000000",
-    assetCode: "CPUSD",
-  },
-  {
-    id: "engine-profile",
-    role: "engine",
-    roleLabel: "Motor de Reglas (Engine)",
-    name: "CanguPay Verification Bot",
-    address: "GENGINE1V3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z1V3M",
-    balance: "10,000.0000000",
-    assetCode: "CPUSD",
-  },
-];
 
 const WalletContext = createContext<WalletState | undefined>(undefined);
 
@@ -139,7 +98,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [network, setNetwork] = useState<WalletNetwork>("UNKNOWN");
   const [networkPassphrase, setNetworkPassphrase] = useState<string | null>(null);
-  const [activeRole, setActiveRole] = useState<UserRole>("buyer");
 
   // Check Freighter extension availability and network state
   const refreshFreighterState = useCallback(async () => {
@@ -256,27 +214,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAddress(null);
   }, []);
 
-  const switchProfile = useCallback((role: UserRole) => {
-    setActiveRole(role);
-  }, []);
-
-  // Compute active profile (combines connected Freighter wallet or deterministic role)
-  const activeProfile = useMemo<UserProfile>(() => {
-    const baseProfile =
-      DEMO_PROFILES.find((p) => p.role === activeRole) || DEMO_PROFILES[0];
-
-    if (isConnected && address) {
-      return {
-        ...baseProfile,
-        address,
-        name: `${baseProfile.name} (Freighter)`,
-        isExternalWallet: true,
-      };
-    }
-
-    return baseProfile;
-  }, [activeRole, isConnected, address]);
-
   // Fail-closed network validation: only exact Testnet passphrase allows signing
   const isExactTestnet = networkPassphrase === TESTNET_PASSPHRASE;
   const isNetworkAllowed = isExactTestnet;
@@ -354,11 +291,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       isNetworkAllowed,
       isSigningBlocked,
       isMainnetBlocked,
-      activeProfile,
-      availableProfiles: DEMO_PROFILES,
       connectFreighter,
       disconnectFreighter,
-      switchProfile,
       signTransactionGuard,
     }),
     [
@@ -372,10 +306,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       isNetworkAllowed,
       isSigningBlocked,
       isMainnetBlocked,
-      activeProfile,
       connectFreighter,
       disconnectFreighter,
-      switchProfile,
       signTransactionGuard,
     ]
   );

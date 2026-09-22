@@ -365,6 +365,24 @@ export const CpuIcon: React.FC<IconProps> = ({ size = 16, className = "", ...pro
   </svg>
 );
 
+export const EyeIcon: React.FC<IconProps> = ({ size = 16, className = "", ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
 export const RoleIcon: React.FC<{ role: string; size?: number; className?: string }> = ({
   role,
   size = 14,
@@ -380,6 +398,8 @@ export const RoleIcon: React.FC<{ role: string; size?: number; className?: strin
       return <ScaleIcon size={size} className={className} />;
     case "engine":
       return <CpuIcon size={size} className={className} />;
+    case "observer":
+      return <EyeIcon size={size} className={className} />;
     default:
       return <UserIcon size={size} className={className} />;
   }
