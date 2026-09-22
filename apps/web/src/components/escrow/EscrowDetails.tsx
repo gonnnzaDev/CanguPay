@@ -21,18 +21,17 @@ import {
   ScaleIcon,
   FileTextIcon,
   PackageIcon,
-  EyeIcon,
   CpuIcon,
 } from "@/components/icons";
+import { truncateHash, formatCountdown } from "./helpers";
+import {
+  BuyerPanel,
+  SupplierPanel,
+  ResolverPanel,
+  ObserverPanel,
+} from "./roles";
 
-/**
- * Truncates an address or cryptographic hash for concise display.
- */
-function truncateHash(hash: string, start = 8, end = 6): string {
-  if (!hash) return "—";
-  if (hash.length <= start + end) return hash;
-  return `${hash.slice(0, start)}...${hash.slice(-end)}`;
-}
+export { truncateHash, formatCountdown };
 
 /**
  * Maps EscrowStatus to technical status styling without generic pills or dots.
@@ -408,14 +407,6 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   const isExpired = deadlineDiffSeconds <= 0 && data.activeDeadline !== undefined && !isTerminal;
   const isFinalizeTriggerable = canFinalize || isExpired;
 
-  const formatCountdown = (diff: number) => {
-    if (diff <= 0) return "Plazo vencido según tiempo local (confirmar ledger)";
-    const hours = Math.floor(diff / 3600);
-    const minutes = Math.floor((diff % 3600) / 60);
-    const seconds = diff % 60;
-    return `~${hours}h ${minutes}m ${seconds}s restantes`;
-  };
-
   const explorerUrl = data.transactionHash
     ? `${data.explorerBaseUrl || "https://stellar.expert/explorer/testnet"}/tx/${data.transactionHash}`
     : data.contractId
@@ -581,291 +572,29 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
       {/* 2. Role-Specific Focus Panel (Linder Lopez Frontend Specifications) */}
       {viewerRole === "buyer" && (
-        <div className="p-5 rounded-xl border border-teal-500/30 dark:border-teal-500/30 bg-teal-500/[0.04] dark:bg-teal-950/25 shadow-xs font-mono space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-teal-500/20 dark:border-teal-500/25">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400">
-                <UserIcon size={16} />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-950 dark:text-teal-200">
-                  Panel de Control del Comprador (Buyer Perspective)
-                </h3>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Resumen ejecutivo y lista de control contractual de la orden
-                </p>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/20 dark:bg-teal-500/30 text-teal-800 dark:text-teal-300 uppercase">
-              ROL: COMPRADOR
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            {/* Metric A: Monto CPUSD */}
-            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Monto de la Operación
-              </span>
-              <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
-                {data.amount} <span className="text-teal-600 dark:text-teal-400">{data.asset}</span>
-              </span>
-            </div>
-
-            {/* Metric B: Proveedor Asignado */}
-            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Proveedor Designado
-              </span>
-              <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200 block truncate">
-                {truncateHash(data.parties.supplier, 6, 6)}
-              </span>
-            </div>
-
-            {/* Metric C: Plazo Activo */}
-            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Plazo Contractual
-              </span>
-              <span className="text-xs font-medium text-amber-700 dark:text-amber-400 block truncate" suppressHydrationWarning>
-                {data.activeDeadline && currentTime > 0
-                  ? formatCountdown(deadlineDiffSeconds)
-                  : "Sin plazo pendiente"}
-              </span>
-            </div>
-
-            {/* Metric D: Fallback Acordado */}
-            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Regla Fallback
-              </span>
-              <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 block truncate">
-                {data.fallbackOutcome || "SPLIT"} ({data.fallbackOutcome === "SPLIT" ? fallbackBpsLabel : "100%"})
-              </span>
-            </div>
-          </div>
-
-          {/* Buyer Guidance Prompt */}
-          <div className="p-3 rounded-lg bg-teal-500/5 dark:bg-teal-950/30 border border-teal-500/20 dark:border-teal-500/30 text-xs text-neutral-700 dark:text-neutral-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <span className="font-bold text-teal-800 dark:text-teal-300 uppercase text-[10px] block mb-0.5">
-                Acción Recomendada:
-              </span>
-              <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
-                {data.status === "CREATED"
-                  ? "La orden está creada pero los fondos aún no han sido transferidos. Puedes fondear el depósito en custodia o crear una orden adicional."
-                  : data.status === "FUNDED"
-                    ? "Los fondos están asegurados en Soroban. Esperando que el proveedor remita el lote documental de entrega física."
-                    : data.status === "EVIDENCE_SUBMITTED"
-                      ? "El lote documental ha sido recibido. El motor de atestación determinista está evaluando la evidencia."
-                      : data.status === "ATTESTED_PASS"
-                        ? "Atestación favorable emitida por el motor. Tienes ventana de objeción activa para aprobar la liberación o disputar."
-                        : data.status === "ATTESTED_FAIL"
-                          ? "El motor observó discrepancias en los documentos. El proveedor cuenta con un intento de corrección técnica."
-                          : data.status === "DISPUTED"
-                            ? "La operación se encuentra bajo revisión del árbitro neutral (resolver). Se espera dictamen vinculante."
-                            : "La operación se encuentra liquidada en un estado inmutable."}
-              </p>
-            </div>
-            {data.status === "CREATED" && onCreateEscrow && (
-              <button
-                onClick={onCreateEscrow}
-                className="shrink-0 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-[11px] transition-colors shadow-2xs cursor-pointer"
-              >
-                + Crear Nuevo Escrow
-              </button>
-            )}
-          </div>
-        </div>
+        <BuyerPanel
+          data={data}
+          currentTime={currentTime}
+          deadlineDiffSeconds={deadlineDiffSeconds}
+          fallbackBpsLabel={fallbackBpsLabel}
+          onCreateEscrow={onCreateEscrow}
+        />
       )}
 
       {viewerRole === "supplier" && (
-        <div className="p-5 rounded-xl border border-indigo-500/30 dark:border-indigo-500/30 bg-indigo-500/[0.04] dark:bg-indigo-950/25 shadow-xs font-mono space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-indigo-500/20 dark:border-indigo-500/25">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
-                <PackageIcon size={16} />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-950 dark:text-indigo-200">
-                  Panel de Control del Proveedor (Supplier Perspective)
-                </h3>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Fondos reservados en custodia y requisitos de entrega física
-                </p>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 dark:bg-indigo-500/30 text-indigo-800 dark:text-indigo-300 uppercase">
-              ROL: PROVEEDOR
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-            {/* Metric A: Fondos Reservados */}
-            <div className="p-3 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Fondos Reservados en Custodia
-              </span>
-              <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
-                {data.amount} <span className="text-indigo-600 dark:text-indigo-400">{data.asset}</span>
-              </span>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block mt-0.5">
-                {data.status === "CREATED" ? "Pendiente de fondeo por comprador" : "Garantizados en Contrato Soroban"}
-              </span>
-            </div>
-
-            {/* Metric B: Plazo de Entrega / Corrección */}
-            <div className="p-3 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Plazo Límite de Entrega / Corrección
-              </span>
-              <span className="text-xs font-medium text-amber-700 dark:text-amber-400 block truncate" suppressHydrationWarning>
-                {data.activeDeadline && currentTime > 0
-                  ? formatCountdown(deadlineDiffSeconds)
-                  : "Sin plazo activo"}
-              </span>
-              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
-                {data.activeDeadline?.label || "Sin ventana pendiente"}
-              </span>
-            </div>
-
-            {/* Metric C: Hashes de Evidencia */}
-            <div className="p-3 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Lote Documental (Evidence Hash)
-              </span>
-              <span className="text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 block truncate">
-                {data.hashes.evidenceBundleHash
-                  ? truncateHash(data.hashes.evidenceBundleHash, 8, 6)
-                  : "Pendiente de presentación"}
-              </span>
-              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
-                {data.hashes.evidenceBundleHash ? "Hash computado off-chain" : "Requiere subir remisión"}
-              </span>
-            </div>
-          </div>
-
-          {/* Supplier Guidance */}
-          <div className="p-3 rounded-lg bg-indigo-500/5 dark:bg-indigo-950/30 border border-indigo-500/20 dark:border-indigo-500/30 text-xs text-neutral-700 dark:text-neutral-300">
-            <span className="font-bold text-indigo-800 dark:text-indigo-300 uppercase text-[10px] block mb-0.5">
-              Estado de Ejecución:
-            </span>
-            <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              {data.status === "CREATED"
-                ? "El comprador aún no ha bloqueado los fondos. No realice el despacho hasta que el estado avance a FONDEADO."
-                : data.status === "FUNDED"
-                  ? "Fondos asegurados en el contrato. Presente el lote documental (remisión / conocimiento de embarque / factura) antes del vencimiento."
-                  : data.status === "ATTESTED_FAIL"
-                    ? "El motor de atestación observó discrepancias. Tienes derecho a 1 intento de corrección técnica o a elevar disputa al árbitro."
-                    : data.status === "ATTESTED_PASS"
-                      ? "Atestación técnica aprobada por el motor. El comprador se encuentra en ventana de revisión para liberación final."
-                      : data.status === "DISPUTED"
-                        ? "Operación en arbitraje neutral. El resolver determinará la distribución de fondos definitiva."
-                        : "Operación liquidada."}
-            </p>
-          </div>
-        </div>
+        <SupplierPanel
+          data={data}
+          currentTime={currentTime}
+          deadlineDiffSeconds={deadlineDiffSeconds}
+        />
       )}
 
       {viewerRole === "resolver" && (
-        <div className="p-5 rounded-xl border border-purple-500/30 dark:border-purple-500/30 bg-purple-500/[0.04] dark:bg-purple-950/25 shadow-xs font-mono space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-purple-500/20 dark:border-purple-500/25">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400">
-                <ScaleIcon size={16} />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-purple-950 dark:text-purple-200">
-                  Panel del Árbitro Neutral (Resolver Perspective)
-                </h3>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Tribunal de arbitraje de la operación y expediente probatorio
-                </p>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 dark:text-purple-300 uppercase">
-              ROL: ÁRBITRO (RESOLVER)
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-            {/* Metric A: Operación & Monto bajo Arbitraje */}
-            <div className="p-3 rounded-lg border border-purple-500/20 dark:border-purple-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Fondo en Disputa
-              </span>
-              <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
-                {data.amount} <span className="text-purple-600 dark:text-purple-400">{data.asset}</span>
-              </span>
-              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
-                Op ID: {data.operationId}
-              </span>
-            </div>
-
-            {/* Metric B: Dictamen Previo del Motor */}
-            <div className="p-3 rounded-lg border border-purple-500/20 dark:border-purple-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Dictamen Motor (Report Hash)
-              </span>
-              <span className="text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 block truncate">
-                {data.hashes.reportHash ? truncateHash(data.hashes.reportHash, 8, 6) : "Sin dictamen registrado"}
-              </span>
-              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
-                Evaluación automatizada previa
-              </span>
-            </div>
-
-            {/* Metric C: Motivo y Pruebas de Disputa */}
-            <div className="p-3 rounded-lg border border-purple-500/20 dark:border-purple-500/30 bg-white/80 dark:bg-neutral-950/70">
-              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
-                Pruebas de Disputa (Hashes)
-              </span>
-              <div className="space-y-0.5 text-[10px]">
-                <div className="truncate">
-                  <span className="text-neutral-400 dark:text-neutral-500">Motivo:</span>{" "}
-                  {data.hashes.reasonHash ? truncateHash(data.hashes.reasonHash, 6, 4) : "—"}
-                </div>
-                <div className="truncate">
-                  <span className="text-neutral-400 dark:text-neutral-500">Evidencia:</span>{" "}
-                  {data.hashes.disputeEvidenceHash ? truncateHash(data.hashes.disputeEvidenceHash, 6, 4) : "—"}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Resolver Guidance */}
-          <div className="p-3 rounded-lg bg-purple-500/5 dark:bg-purple-950/30 border border-purple-500/20 dark:border-purple-500/30 text-xs text-neutral-700 dark:text-neutral-300">
-            <span className="font-bold text-purple-800 dark:text-purple-300 uppercase text-[10px] block mb-0.5">
-              Facultad Jurisdiccional:
-            </span>
-            <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              {data.status === "DISPUTED"
-                ? "Como árbitro neutral designado, estás facultado para dirimir este conflicto mediante invocación vinculante en Soroban: Liberar a proveedor (Release), Reembolsar a comprador (Refund), o Dividir proporcionalmente (Split)."
-                : "Esta operación no se encuentra actualmente en estado de disputa. La intervención del árbitro sólo se activa si alguna de las partes objeta el dictamen."}
-            </p>
-          </div>
-        </div>
+        <ResolverPanel data={data} />
       )}
 
       {viewerRole === "observer" && (
-        <div className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-900/80 shadow-xs font-mono text-xs flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-neutral-200/80 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 shrink-0">
-            <EyeIcon size={18} />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-neutral-900 dark:text-neutral-100 text-[11px] uppercase tracking-wider">
-                Modo Lectura / Observer
-              </span>
-              <span className="text-[9px] px-2 py-0.5 rounded bg-neutral-200/80 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold uppercase">
-                Solo Lectura
-              </span>
-            </div>
-            <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              Cuenta conectada en modo observador. Visualización pública de solo lectura. Tu dirección Freighter no coincide con el Comprador, Proveedor ni Árbitro configurados en este contrato. Puedes auditar libremente todos los estados, hashes y plazos de la operación.
-            </p>
-          </div>
-        </div>
+        <ObserverPanel />
       )}
 
       {viewerRole === null && (
