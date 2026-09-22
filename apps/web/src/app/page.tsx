@@ -4,30 +4,18 @@ import React, { useState } from "react";
 import {
   CanguPayLogo,
   NetworkIcon,
-  CopyIcon,
-  CheckIcon,
   RoleIcon,
-  AlertCircleIcon,
-  CloseIcon,
 } from "@/components/icons";
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
-import { UserRole } from "@/types/wallet";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
 import {
   EscrowDetailsData,
   EscrowStatus,
-  isTerminalStatus,
   deriveWalletRole,
+  getAvailableActions,
 } from "@/types/escrow";
-
-interface TransactionFeedback {
-  type: "success" | "error";
-  actionName: string;
-  txHash?: string;
-  errorDetails?: string;
-}
 
 // Representative fixtures for CanguPay P0 state machine stages with deterministic timestamps
 const BASE_LEDGER_TIME = 1758412800; // Deterministic reference timestamp (eliminates hydration drift)
@@ -135,52 +123,7 @@ export default function Home() {
     networkPassphrase,
     isExactTestnet,
     isFreighterInstalled,
-    signTransactionGuard,
   } = useWallet();
-
-  const [copiedHash, setCopiedHash] = useState<boolean>(false);
-  const [isSigning, setIsSigning] = useState<boolean>(false);
-  const [feedback, setFeedback] = useState<TransactionFeedback | null>(null);
-
-  const handleRoleAction = async (actionName: string, nextStatus?: EscrowStatus) => {
-    setIsSigning(true);
-    try {
-      // Mock representative Soroban authorization XDR for testing P0-08 guard
-      const mockTxXdr = "AAAAAgAAAABn80rGj5F2s...mock...xdr";
-      const res = await signTransactionGuard(mockTxXdr);
-
-      if (!res.success) {
-        setFeedback({
-          type: "error",
-          actionName,
-          errorDetails: res.error || "Firma rechazada o bloqueada por la guardia de seguridad.",
-        });
-      } else {
-        setFeedback({
-          type: "success",
-          actionName,
-          txHash: "0x7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
-        });
-
-        // Trigger realistic state change in the contract view with high-fidelity skeleton
-        if (nextStatus) {
-          setIsLoading(true);
-          setTimeout(() => {
-            setActiveScenario(nextStatus);
-            setIsLoading(false);
-          }, 400);
-        }
-      }
-    } catch (err: unknown) {
-      setFeedback({
-        type: "error",
-        actionName,
-        errorDetails: err instanceof Error ? err.message : "Error inesperado al firmar.",
-      });
-    } finally {
-      setIsSigning(false);
-    }
-  };
 
   const handleRefresh = () => {
     setIsLoading(true);
@@ -191,149 +134,78 @@ export default function Home() {
     }, 450);
   };
 
-  const getActionForRoleAndStatus = (
-    role: UserRole,
-    status: EscrowStatus
-  ): { label: string; fullName: string; nextStatus?: EscrowStatus } | null => {
-    if (isTerminalStatus(status)) return null;
-
-    if (role === "buyer") {
-      if (status === "FUNDED" || status === "ATTESTED_PASS") {
-        return {
-          label: "Liberar Fondos",
-          fullName: "Aprobar y Liberar Fondos",
-          nextStatus: "RELEASED",
-        };
-      }
-    } else if (role === "supplier") {
-      if (status === "FUNDED") {
-        return {
-          label: "Presentar Evidencia",
-          fullName: "Presentar Evidencia Documental",
-          nextStatus: "ATTESTED_PASS",
-        };
-      }
-    } else if (role === "resolver") {
-      if (status === "DISPUTED") {
-        return {
-          label: "Resolver Disputa",
-          fullName: "Emitir Dictamen Arbitral",
-          nextStatus: "RELEASED",
-        };
-      }
-    }
-    return null;
-  };
-
   const currentData = isEmpty ? null : mockEscrows[activeScenario] || null;
   const derivedRole = deriveWalletRole(address, currentData?.parties);
-  const actionInfo = derivedRole
-    ? getActionForRoleAndStatus(derivedRole, activeScenario)
-    : null;
+  const availableActions = currentData
+    ? getAvailableActions(derivedRole, currentData.status, false)
+    : [];
 
-  const actionSlot = actionInfo ? (
-    <button
-      type="button"
-      disabled={isSigning || isLoading}
-      onClick={() => handleRoleAction(actionInfo.fullName, actionInfo.nextStatus)}
-      className="px-3 py-1.5 rounded-lg border border-teal-600 dark:border-teal-500 bg-teal-600 hover:bg-teal-700 text-white font-mono text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 shadow-2xs flex items-center gap-1.5"
-    >
-      {isSigning ? (
-        <span>Firmando...</span>
-      ) : (
-        <>
-          <span className="font-normal text-teal-100 hidden sm:inline">Firmar:</span>
-          <span>{actionInfo.label}</span>
-        </>
+  const actionSlot = (
+    <div className="flex flex-wrap items-center gap-2">
+      {currentData?.status === "EVIDENCE_SUBMITTED" && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-mono text-[11px] font-medium shadow-2xs">
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <span>Esperando atestación del motor (Engine)</span>
+        </div>
       )}
-    </button>
-  ) : null;
 
-  const bannerSlot = feedback ? (
-    <div
-      role="alert"
-      className={`p-3 rounded-xl border flex items-start sm:items-center justify-between gap-3 text-xs font-mono transition-all animate-in fade-in duration-200 ${
-        feedback.type === "error"
-          ? "bg-red-50/70 border-red-200/80 dark:bg-red-950/30 dark:border-red-900/50 text-red-900 dark:text-red-200"
-          : "bg-emerald-50/60 border-emerald-200/80 dark:bg-emerald-950/30 dark:border-emerald-900/50 text-emerald-900 dark:text-emerald-200"
-      }`}
-    >
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span
-          className={`p-1 rounded-md shrink-0 flex items-center justify-center ${
-            feedback.type === "error"
-              ? "bg-red-200/60 dark:bg-red-900/60 text-red-700 dark:text-red-300"
-              : "bg-emerald-200/60 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300"
+      {availableActions.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          disabled
+          title={`${action.fullName} — ${action.description} (Pendiente de integración on-chain)`}
+          className={`px-3 py-1.5 rounded-lg font-mono text-xs font-semibold shadow-2xs flex items-center gap-1.5 border opacity-60 cursor-not-allowed ${
+            action.variant === "danger"
+              ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+              : action.variant === "secondary"
+                ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                : "border-teal-600/50 bg-teal-600/15 text-teal-800 dark:text-teal-200"
           }`}
         >
-          {feedback.type === "error" ? (
-            <AlertCircleIcon size={14} />
-          ) : (
-            <CheckIcon size={14} className="stroke-[2.5]" />
-          )}
-        </span>
-
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          <span className="font-bold tracking-tight">
-            {feedback.type === "error" ? "Firma Bloqueada:" : "Transacción Autorizada:"}
+          <span>{action.label}</span>
+          <span className="text-[10px] opacity-75 font-normal">
+            [Pendiente on-chain]
           </span>
-          <span className="text-neutral-700 dark:text-neutral-300 font-medium">
-            {feedback.actionName}
-          </span>
-
-          {feedback.type === "success" && feedback.txHash && (
-            <>
-              <span className="text-neutral-300 dark:text-neutral-700 hidden sm:inline">•</span>
-              <div className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
-                <span className="text-[10px]">HASH:</span>
-                <span className="text-[11px] text-neutral-700 dark:text-neutral-300">
-                  {feedback.txHash.slice(0, 8)}...{feedback.txHash.slice(-6)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (feedback.txHash && navigator.clipboard) {
-                      navigator.clipboard.writeText(feedback.txHash);
-                      setCopiedHash(true);
-                      setTimeout(() => setCopiedHash(false), 1500);
-                    }
-                  }}
-                  className="p-0.5 rounded text-neutral-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors cursor-pointer"
-                  title="Copiar Hash de Transacción"
-                  aria-label="Copiar Hash de Transacción"
-                >
-                  {copiedHash ? (
-                    <CheckIcon size={11} className="text-emerald-500" />
-                  ) : (
-                    <CopyIcon size={11} />
-                  )}
-                </button>
-              </div>
-            </>
-          )}
-
-          {feedback.type === "error" && feedback.errorDetails && (
-            <>
-              <span className="text-neutral-300 dark:text-neutral-700 hidden sm:inline">•</span>
-              <span className="text-red-700 dark:text-red-300 text-[11px]">
-                {feedback.errorDetails}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => setFeedback(null)}
-        className="p-1 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100/60 dark:hover:bg-neutral-800/60 transition-colors cursor-pointer shrink-0"
-        title="Cerrar notificación"
-        aria-label="Cerrar notificación"
-      >
-        <CloseIcon size={13} />
-      </button>
+        </button>
+      ))}
     </div>
-  ) : null;
+  );
+
+  const bannerSlot = (
+    <div
+      role="status"
+      className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3 text-xs font-mono"
+    >
+      <div className="flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+        <span className="font-bold tracking-wider uppercase shrink-0">
+          DATOS MOCK · SIN LECTURA RPC
+        </span>
+        <span className="hidden sm:inline text-amber-800 dark:text-amber-300">
+          — Visualización de interfaz para desarrollo. Lectura y mutaciones reales de contrato pendientes de RPC.
+        </span>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300">
+          DEV PREVIEW
+        </span>
+        <select
+          value={activeScenario}
+          onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
+          className="text-[11px] bg-white/70 dark:bg-neutral-900/70 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded px-1.5 py-0.5 font-mono cursor-pointer"
+          title="Escenario de desarrollo para previsualizar estados"
+          aria-label="Escenario de desarrollo"
+        >
+          {Object.keys(mockEscrows).map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen font-sans antialiased selection:bg-teal-500/20">
