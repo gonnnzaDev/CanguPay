@@ -581,14 +581,14 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
       {/* 2. Role-Specific Focus Panel (Linder Lopez Frontend Specifications) */}
       {viewerRole === "buyer" && (
-        <div className="p-5 rounded-xl border border-teal-500/30 bg-teal-500/[0.03] dark:bg-teal-500/[0.02] shadow-xs font-mono space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-teal-500/20">
+        <div className="p-5 rounded-xl border border-teal-500/30 dark:border-teal-500/30 bg-teal-500/[0.04] dark:bg-teal-950/25 shadow-xs font-mono space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-teal-500/20 dark:border-teal-500/25">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400">
+              <div className="p-1.5 rounded-lg bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400">
                 <UserIcon size={16} />
               </div>
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-900 dark:text-teal-200">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-950 dark:text-teal-200">
                   Panel de Control del Comprador (Buyer Perspective)
                 </h3>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -596,15 +596,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 </p>
               </div>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/20 text-teal-800 dark:text-teal-300 uppercase">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/20 dark:bg-teal-500/30 text-teal-800 dark:text-teal-300 uppercase">
               ROL: COMPRADOR
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
             {/* Metric A: Monto CPUSD */}
-            <div className="p-3 rounded-lg border border-teal-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Monto de la Operación
               </span>
               <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
@@ -613,8 +613,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             </div>
 
             {/* Metric B: Proveedor Asignado */}
-            <div className="p-3 rounded-lg border border-teal-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Proveedor Designado
               </span>
               <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200 block truncate">
@@ -623,8 +623,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             </div>
 
             {/* Metric C: Plazo Activo */}
-            <div className="p-3 rounded-lg border border-teal-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Plazo Contractual
               </span>
               <span className="text-xs font-medium text-amber-700 dark:text-amber-400 block truncate" suppressHydrationWarning>
@@ -635,8 +635,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             </div>
 
             {/* Metric D: Fallback Acordado */}
-            <div className="p-3 rounded-lg border border-teal-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-teal-500/20 dark:border-teal-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Regla Fallback
               </span>
               <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 block truncate">
@@ -646,12 +646,12 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           </div>
 
           {/* Buyer Guidance Prompt */}
-          <div className="p-3 rounded-lg bg-teal-500/5 border border-teal-500/20 text-xs text-neutral-700 dark:text-neutral-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-3 rounded-lg bg-teal-500/5 dark:bg-teal-950/30 border border-teal-500/20 dark:border-teal-500/30 text-xs text-neutral-700 dark:text-neutral-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <span className="font-bold text-teal-800 dark:text-teal-300 uppercase text-[10px] block mb-0.5">
                 Acción Recomendada:
               </span>
-              <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+              <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
                 {data.status === "CREATED"
                   ? "La orden está creada pero los fondos aún no han sido transferidos. Puedes fondear el depósito en custodia o crear una orden adicional."
                   : data.status === "FUNDED"
@@ -680,14 +680,14 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       )}
 
       {viewerRole === "supplier" && (
-        <div className="p-5 rounded-xl border border-indigo-500/30 bg-indigo-500/[0.03] dark:bg-indigo-500/[0.02] shadow-xs font-mono space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-indigo-500/20">
+        <div className="p-5 rounded-xl border border-indigo-500/30 dark:border-indigo-500/30 bg-indigo-500/[0.04] dark:bg-indigo-950/25 shadow-xs font-mono space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-indigo-500/20 dark:border-indigo-500/25">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <div className="p-1.5 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
                 <PackageIcon size={16} />
               </div>
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-950 dark:text-indigo-200">
                   Panel de Control del Proveedor (Supplier Perspective)
                 </h3>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -695,15 +695,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 </p>
               </div>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 uppercase">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 dark:bg-indigo-500/30 text-indigo-800 dark:text-indigo-300 uppercase">
               ROL: PROVEEDOR
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
             {/* Metric A: Fondos Reservados */}
-            <div className="p-3 rounded-lg border border-indigo-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Fondos Reservados en Custodia
               </span>
               <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
@@ -715,8 +715,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             </div>
 
             {/* Metric B: Plazo de Entrega / Corrección */}
-            <div className="p-3 rounded-lg border border-indigo-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Plazo Límite de Entrega / Corrección
               </span>
               <span className="text-xs font-medium text-amber-700 dark:text-amber-400 block truncate" suppressHydrationWarning>
@@ -724,14 +724,14 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   ? formatCountdown(deadlineDiffSeconds)
                   : "Sin plazo activo"}
               </span>
-              <span className="text-[10px] text-neutral-400 block mt-0.5">
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
                 {data.activeDeadline?.label || "Sin ventana pendiente"}
               </span>
             </div>
 
             {/* Metric C: Hashes de Evidencia */}
-            <div className="p-3 rounded-lg border border-indigo-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-indigo-500/20 dark:border-indigo-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Lote Documental (Evidence Hash)
               </span>
               <span className="text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 block truncate">
@@ -739,18 +739,18 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   ? truncateHash(data.hashes.evidenceBundleHash, 8, 6)
                   : "Pendiente de presentación"}
               </span>
-              <span className="text-[10px] text-neutral-400 block mt-0.5">
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
                 {data.hashes.evidenceBundleHash ? "Hash computado off-chain" : "Requiere subir remisión"}
               </span>
             </div>
           </div>
 
           {/* Supplier Guidance */}
-          <div className="p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/20 text-xs text-neutral-700 dark:text-neutral-300">
+          <div className="p-3 rounded-lg bg-indigo-500/5 dark:bg-indigo-950/30 border border-indigo-500/20 dark:border-indigo-500/30 text-xs text-neutral-700 dark:text-neutral-300">
             <span className="font-bold text-indigo-800 dark:text-indigo-300 uppercase text-[10px] block mb-0.5">
               Estado de Ejecución:
             </span>
-            <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+            <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
               {data.status === "CREATED"
                 ? "El comprador aún no ha bloqueado los fondos. No realice el despacho hasta que el estado avance a FONDEADO."
                 : data.status === "FUNDED"
@@ -768,14 +768,14 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       )}
 
       {viewerRole === "resolver" && (
-        <div className="p-5 rounded-xl border border-purple-500/30 bg-purple-500/[0.03] dark:bg-purple-500/[0.02] shadow-xs font-mono space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
+        <div className="p-5 rounded-xl border border-purple-500/30 dark:border-purple-500/30 bg-purple-500/[0.04] dark:bg-purple-950/25 shadow-xs font-mono space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-purple-500/20 dark:border-purple-500/25">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
+              <div className="p-1.5 rounded-lg bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400">
                 <ScaleIcon size={16} />
               </div>
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-200">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-purple-950 dark:text-purple-200">
                   Panel del Árbitro Neutral (Resolver Perspective)
                 </h3>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -783,50 +783,50 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 </p>
               </div>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-800 dark:text-purple-300 uppercase">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 dark:text-purple-300 uppercase">
               ROL: ÁRBITRO (RESOLVER)
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
             {/* Metric A: Operación & Monto bajo Arbitraje */}
-            <div className="p-3 rounded-lg border border-purple-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-purple-500/20 dark:border-purple-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Fondo en Disputa
               </span>
               <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
                 {data.amount} <span className="text-purple-600 dark:text-purple-400">{data.asset}</span>
               </span>
-              <span className="text-[10px] text-neutral-400 block mt-0.5">
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
                 Op ID: {data.operationId}
               </span>
             </div>
 
             {/* Metric B: Dictamen Previo del Motor */}
-            <div className="p-3 rounded-lg border border-purple-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-purple-500/20 dark:border-purple-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Dictamen Motor (Report Hash)
               </span>
               <span className="text-xs font-mono font-medium text-neutral-800 dark:text-neutral-200 block truncate">
                 {data.hashes.reportHash ? truncateHash(data.hashes.reportHash, 8, 6) : "Sin dictamen registrado"}
               </span>
-              <span className="text-[10px] text-neutral-400 block mt-0.5">
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
                 Evaluación automatizada previa
               </span>
             </div>
 
             {/* Metric C: Motivo y Pruebas de Disputa */}
-            <div className="p-3 rounded-lg border border-purple-500/20 bg-white/70 dark:bg-neutral-900/70">
-              <span className="text-[10px] uppercase text-neutral-500 font-semibold block mb-1">
+            <div className="p-3 rounded-lg border border-purple-500/20 dark:border-purple-500/30 bg-white/80 dark:bg-neutral-950/70">
+              <span className="text-[10px] uppercase text-neutral-500 dark:text-neutral-400 font-semibold block mb-1">
                 Pruebas de Disputa (Hashes)
               </span>
               <div className="space-y-0.5 text-[10px]">
                 <div className="truncate">
-                  <span className="text-neutral-400">Motivo:</span>{" "}
+                  <span className="text-neutral-400 dark:text-neutral-500">Motivo:</span>{" "}
                   {data.hashes.reasonHash ? truncateHash(data.hashes.reasonHash, 6, 4) : "—"}
                 </div>
                 <div className="truncate">
-                  <span className="text-neutral-400">Evidencia:</span>{" "}
+                  <span className="text-neutral-400 dark:text-neutral-500">Evidencia:</span>{" "}
                   {data.hashes.disputeEvidenceHash ? truncateHash(data.hashes.disputeEvidenceHash, 6, 4) : "—"}
                 </div>
               </div>
@@ -834,11 +834,11 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           </div>
 
           {/* Resolver Guidance */}
-          <div className="p-3 rounded-lg bg-purple-500/5 border border-purple-500/20 text-xs text-neutral-700 dark:text-neutral-300">
+          <div className="p-3 rounded-lg bg-purple-500/5 dark:bg-purple-950/30 border border-purple-500/20 dark:border-purple-500/30 text-xs text-neutral-700 dark:text-neutral-300">
             <span className="font-bold text-purple-800 dark:text-purple-300 uppercase text-[10px] block mb-0.5">
               Facultad Jurisdiccional:
             </span>
-            <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+            <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
               {data.status === "DISPUTED"
                 ? "Como árbitro neutral designado, estás facultado para dirimir este conflicto mediante invocación vinculante en Soroban: Liberar a proveedor (Release), Reembolsar a comprador (Refund), o Dividir proporcionalmente (Split)."
                 : "Esta operación no se encuentra actualmente en estado de disputa. La intervención del árbitro sólo se activa si alguna de las partes objeta el dictamen."}
@@ -848,8 +848,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       )}
 
       {viewerRole === "observer" && (
-        <div className="p-4 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-100/50 dark:bg-neutral-900/50 shadow-xs font-mono text-xs flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 shrink-0">
+        <div className="p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-900/80 shadow-xs font-mono text-xs flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-neutral-200/80 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 shrink-0">
             <EyeIcon size={18} />
           </div>
           <div className="space-y-1">
@@ -857,11 +857,11 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               <span className="font-bold text-neutral-900 dark:text-neutral-100 text-[11px] uppercase tracking-wider">
                 Modo Lectura / Observer
               </span>
-              <span className="text-[9px] px-2 py-0.5 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold uppercase">
+              <span className="text-[9px] px-2 py-0.5 rounded bg-neutral-200/80 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold uppercase">
                 Solo Lectura
               </span>
             </div>
-            <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
               Cuenta conectada en modo observador. Visualización pública de solo lectura. Tu dirección Freighter no coincide con el Comprador, Proveedor ni Árbitro configurados en este contrato. Puedes auditar libremente todos los estados, hashes y plazos de la operación.
             </p>
           </div>
@@ -869,7 +869,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       )}
 
       {viewerRole === null && (
-        <div className="p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 text-neutral-500 font-mono text-[11px] flex items-center justify-between">
+        <div className="p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/70 text-neutral-600 dark:text-neutral-300 font-mono text-[11px] flex items-center justify-between">
           <span>
             Conecte su wallet Freighter para detectar automáticamente su rol en este contrato (Comprador, Proveedor o Árbitro).
           </span>
