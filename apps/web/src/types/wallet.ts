@@ -1,5 +1,7 @@
 export type WalletNetwork = "TESTNET" | "PUBLIC" | "FUTURENET" | "STANDALONE" | "UNKNOWN";
 
+export const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
+
 export type UserRole = "buyer" | "supplier" | "resolver" | "engine" | "observer";
 
 export interface UserProfile {
@@ -19,7 +21,10 @@ export interface WalletState {
   isConnecting: boolean;
   address: string | null;
   network: WalletNetwork;
-  networkPassphrase?: string;
+  networkPassphrase: string | null;
+  isExactTestnet: boolean;
+  isNetworkAllowed: boolean;
+  isSigningBlocked: boolean;
   isMainnetBlocked: boolean;
   activeProfile: UserProfile;
   availableProfiles: UserProfile[];
@@ -32,3 +37,4 @@ export interface WalletState {
     signedXdr?: string;
   }>;
 }
+

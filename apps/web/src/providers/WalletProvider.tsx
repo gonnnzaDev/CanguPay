@@ -21,6 +21,7 @@ import {
   UserRole,
   WalletNetwork,
   WalletState,
+  TESTNET_PASSPHRASE,
 } from "@/types/wallet";
 
 const DEMO_PROFILES: UserProfile[] = [
@@ -66,15 +67,78 @@ const WalletContext = createContext<WalletState | undefined>(undefined);
 
 const STORAGE_KEY_WALLET_CONNECTED = "cangupay_freighter_connected";
 
+/**
+ * Fail-closed network and passphrase detection.
+ * Never defaults to TESTNET in catch blocks.
+ */
+async function queryFreighterNetwork(): Promise<{
+  network: WalletNetwork;
+  passphrase: string | null;
+}> {
+  try {
+    const netDetails = await getNetworkDetails();
+    if (netDetails && typeof netDetails === "object") {
+      const rawNet = (netDetails.network || "").toUpperCase();
+      const rawPassphrase = netDetails.networkPassphrase || null;
+
+      let netType: WalletNetwork = "UNKNOWN";
+      if (rawNet.includes("PUBLIC") || rawNet.includes("MAIN")) {
+        netType = "PUBLIC";
+      } else if (rawNet.includes("FUTURE")) {
+        netType = "FUTURENET";
+      } else if (rawNet.includes("STANDALONE")) {
+        netType = "STANDALONE";
+      } else if (rawNet.includes("TESTNET") || rawNet.includes("TEST")) {
+        netType = "TESTNET";
+      }
+
+      return {
+        network: netType,
+        passphrase: rawPassphrase,
+      };
+    }
+  } catch {
+    // Fail-closed: do not assume or fallback to TESTNET
+  }
+
+  try {
+    const rawNetwork = await getFreighterNetwork();
+    const netStr = (
+      typeof rawNetwork === "string"
+        ? rawNetwork
+        : (rawNetwork as { network?: string })?.network || ""
+    ).toUpperCase();
+
+    let netType: WalletNetwork = "UNKNOWN";
+    if (netStr.includes("PUBLIC") || netStr.includes("MAIN")) {
+      netType = "PUBLIC";
+    } else if (netStr.includes("FUTURE")) {
+      netType = "FUTURENET";
+    } else if (netStr.includes("STANDALONE")) {
+      netType = "STANDALONE";
+    } else if (netStr.includes("TESTNET") || netStr.includes("TEST")) {
+      netType = "TESTNET";
+    }
+
+    return {
+      network: netType,
+      passphrase: null,
+    };
+  } catch {
+    return {
+      network: "UNKNOWN",
+      passphrase: null,
+    };
+  }
+}
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isFreighterInstalled, setIsFreighterInstalled] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
-  const [network, setNetwork] = useState<WalletNetwork>("TESTNET");
-  const [networkPassphrase, setNetworkPassphrase] = useState<string | undefined>(
-    "Test SDF Network ; September 2015"
-  );
+  const [network, setNetwork] = useState<WalletNetwork>("UNKNOWN");
+  const [networkPassphrase, setNetworkPassphrase] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<UserRole>("buyer");
 
   // Check Freighter extension availability and network state
@@ -91,38 +155,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setIsFreighterInstalled(installed);
 
       if (installed) {
-        // Read network configuration
-        try {
-          const netDetails = await getNetworkDetails();
-          if (netDetails && netDetails.network) {
-            const rawNet = (netDetails.network || "").toUpperCase();
-            if (rawNet.includes("PUBLIC") || rawNet.includes("MAIN")) {
-              setNetwork("PUBLIC");
-            } else if (rawNet.includes("FUTURE")) {
-              setNetwork("FUTURENET");
-            } else {
-              setNetwork("TESTNET");
-            }
-            if (netDetails.networkPassphrase) {
-              setNetworkPassphrase(netDetails.networkPassphrase);
-            }
-          } else {
-            const rawNetwork = await getFreighterNetwork();
-            const netStr = (
-              typeof rawNetwork === "string"
-                ? rawNetwork
-                : (rawNetwork as { network?: string })?.network || ""
-            ).toUpperCase();
-
-            if (netStr.includes("PUBLIC") || netStr.includes("MAIN")) {
-              setNetwork("PUBLIC");
-            } else {
-              setNetwork("TESTNET");
-            }
-          }
-        } catch {
-          setNetwork("TESTNET");
-        }
+        // Read network configuration fail-closed
+        const netInfo = await queryFreighterNetwork();
+        setNetwork(netInfo.network);
+        setNetworkPassphrase(netInfo.passphrase);
 
         // Only restore connection if user explicitly chose to connect (stops auto-reconnect on disconnect)
         let isAllowedToConnect = false;
@@ -154,9 +190,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setAddress(null);
           setIsConnected(false);
         }
+      } else {
+        setNetwork("UNKNOWN");
+        setNetworkPassphrase(null);
       }
     } catch {
       setIsFreighterInstalled(false);
+      setNetwork("UNKNOWN");
+      setNetworkPassphrase(null);
     }
   }, []);
 
@@ -236,19 +277,37 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return baseProfile;
   }, [activeRole, isConnected, address]);
 
-  // Guard: explicitly block signing on Mainnet
-  const isMainnetBlocked = network === "PUBLIC";
+  // Fail-closed network validation: only exact Testnet passphrase allows signing
+  const isExactTestnet = networkPassphrase === TESTNET_PASSPHRASE;
+  const isNetworkAllowed = isExactTestnet;
+  const isSigningBlocked = !isExactTestnet;
+  const isMainnetBlocked = network === "PUBLIC" || isSigningBlocked;
 
   const signTransactionGuard = useCallback(
     async (
       xdr: string
     ): Promise<{ success: boolean; error?: string; signedXdr?: string }> => {
-      // Re-verify network immediately before signing
-      if (network === "PUBLIC") {
+      // Re-verify network dynamically immediately before signing (fail-closed check)
+      let freshPassphrase: string | null = null;
+      let freshNetwork: WalletNetwork = "UNKNOWN";
+
+      try {
+        const freshNet = await queryFreighterNetwork();
+        freshPassphrase = freshNet.passphrase;
+        freshNetwork = freshNet.network;
+        setNetwork(freshNetwork);
+        setNetworkPassphrase(freshPassphrase);
+      } catch {
         return {
           success: false,
-          error:
-            "ACCION BLOQUEADA POR SEGURIDAD: La wallet está conectada a PUBLIC (Mainnet). Por especificación P0, está estrictamente prohibido firmar en mainnet. Cambia la red a Testnet en Freighter.",
+          error: "ACCION BLOQUEADA: No se pudo verificar la red en Freighter. Estado fail-closed.",
+        };
+      }
+
+      if (freshPassphrase !== TESTNET_PASSPHRASE) {
+        return {
+          success: false,
+          error: `ACCION BLOQUEADA POR SEGURIDAD: La red (${freshNetwork}) no coincide con la passphrase oficial de Stellar Testnet ("${TESTNET_PASSPHRASE}"). Por especificación P0, toda firma fuera de Testnet está estrictamente bloqueada.`,
         };
       }
 
@@ -261,7 +320,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const signedRes = await signFreighterTransaction(xdr, {
-          networkPassphrase,
+          networkPassphrase: TESTNET_PASSPHRASE,
         });
         const signedXdr =
           typeof signedRes === "string"
@@ -280,7 +339,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         };
       }
     },
-    [network, isConnected, address, networkPassphrase]
+    [isConnected, address]
   );
 
   const value = useMemo<WalletState>(
@@ -291,6 +350,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       address,
       network,
       networkPassphrase,
+      isExactTestnet,
+      isNetworkAllowed,
+      isSigningBlocked,
       isMainnetBlocked,
       activeProfile,
       availableProfiles: DEMO_PROFILES,
@@ -306,6 +368,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       address,
       network,
       networkPassphrase,
+      isExactTestnet,
+      isNetworkAllowed,
+      isSigningBlocked,
       isMainnetBlocked,
       activeProfile,
       connectFreighter,

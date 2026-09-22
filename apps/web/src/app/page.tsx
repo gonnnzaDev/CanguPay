@@ -131,7 +131,9 @@ export default function Home() {
   const {
     activeProfile,
     network,
-    isMainnetBlocked,
+    networkPassphrase,
+    isExactTestnet,
+    isFreighterInstalled,
     signTransactionGuard,
   } = useWallet();
 
@@ -373,11 +375,19 @@ export default function Home() {
             {/* Technical Network Indicator with NetworkIcon */}
             <div
               className={`flex items-center font-mono text-xs border rounded-lg overflow-hidden shadow-2xs ${
-                isMainnetBlocked
-                  ? "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400"
-                  : "border-neutral-200 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-900/60"
+                !isFreighterInstalled
+                  ? "border-neutral-200 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-900/60 text-neutral-400"
+                  : isExactTestnet
+                    ? "border-teal-500/30 bg-teal-500/5 text-teal-700 dark:text-teal-300"
+                    : "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400"
               }`}
-              title={`Red Stellar: ${network}`}
+              title={
+                !isFreighterInstalled
+                  ? "Freighter no detectado"
+                  : isExactTestnet
+                    ? `Red Stellar validada: ${network} (${networkPassphrase || ""})`
+                    : `Red bloqueada: ${network} (requiere Testnet oficial)`
+              }
             >
               <span
                 className="px-2 py-1.5 bg-neutral-200/50 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-800 flex items-center justify-center"
@@ -387,12 +397,14 @@ export default function Home() {
               </span>
               <span
                 className={`px-2.5 py-1 text-[11px] font-bold tracking-wider ${
-                  isMainnetBlocked
-                    ? "text-red-600 dark:text-red-400 animate-pulse"
-                    : "text-teal-700 dark:text-teal-300"
+                  !isFreighterInstalled
+                    ? "text-neutral-400"
+                    : isExactTestnet
+                      ? "text-teal-700 dark:text-teal-300"
+                      : "text-red-600 dark:text-red-400 animate-pulse"
                 }`}
               >
-                {network}
+                {!isFreighterInstalled ? "NO DETECTADO" : isExactTestnet ? "TESTNET" : network}
               </span>
             </div>
           </div>
