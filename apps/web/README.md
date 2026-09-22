@@ -4,7 +4,7 @@ Cliente web de **CanguPay**, plataforma de escrow condicional B2B sobre **Stella
 
 ---
 
-## 🛠️ Stack Tecnológico Elegido
+## 🛠️ Stack Tecnológico
 
 - **Framework**: [Next.js 16 (App Router)](https://nextjs.org/) con React 19 y Turbopack.
 - **Estilos**: [Tailwind CSS v4](https://tailwindcss.com/) con `@tailwindcss/postcss`.
@@ -15,23 +15,68 @@ Cliente web de **CanguPay**, plataforma de escrow condicional B2B sobre **Stella
 
 ---
 
-## 🛡️ Seguridad y Control de Red (Mainnet Guard)
+## 🛡️ Seguridad y Control de Red (Fail-Closed Network Guard)
 
-Por especificación y seguridad en P0:
-- **Detección Activa de Red**: El cliente detecta dinámicamente la red configurada en Freighter (`getNetwork` / `getNetworkDetails`).
-- **Bloqueo Estricto de Mainnet**: Si se detecta `PUBLIC` (Mainnet), la aplicación activa un banner de advertencia crítico y **bloquea a nivel de código cualquier firma de transacciones (`signTransactionGuard`)**, previniendo pérdidas accidentales de fondos reales.
-- **Solo Testnet**: Todas las operaciones y transacciones están autorizadas exclusivamente en `TESTNET` (`Test SDF Network ; September 2015`).
+Por especificación y política estricta de seguridad en P0:
+- **Estado Inicial `UNKNOWN`**: La aplicación no asume ni recurre a Testnet en bloques `catch`. Si Freighter no está disponible o falla la lectura, la red queda como `UNKNOWN` con passphrase `null`.
+- **Validación de Passphrase Exacta**: Únicamente se permite la firma cuando la passphrase detectada coincide con exactitud matemática con:
+  ```
+  Test SDF Network ; September 2015
+  ```
+- **Fail-Closed en Firma (`signTransactionGuard`)**: Inmediatamente antes de cada intento de firma, el guard vuelve a consultar la red y passphrase directamente desde Freighter. Si la red es `PUBLIC` (Mainnet), `FUTURENET`, `STANDALONE`, `UNKNOWN`, o si la passphrase no coincide exactamente, la firma queda terminantemente bloqueada.
+- **Alertas Visuales Contextuales**: La barra de advertencia superior alerta de inmediato si se detecta cualquier red que no sea la Testnet autorizada.
 
 ---
 
-## 👥 Multi-party Profiles (P0-08 Simulation)
+## 👥 Determinación Dinámica de Roles (Wallet-Derived Identity)
 
-Para facilitar pruebas y auditoría de los flujos de custodia condicional, la aplicación soporta perfiles de rol independientes:
-- **Comprador (Buyer)**: Depositante de fondos y autorizante del escrow (`GBUYER...`).
-- **Proveedor (Supplier)**: Beneficiario de la liberación tras atestación documental (`GSUPPLIER...`).
-- **Árbitro (Resolver)**: Resolutor neutral de disputas contractuales (`GRESOLVER...`).
-- **Motor de Reglas (Engine)**: Verificador automatizado de evidencia documental (`GENGINE...`).
-- **Freighter Wallet**: Vinculación directa con la clave pública real conectada desde la extensión.
+La dApp es una **única pantalla adaptativa** que ajusta su interfaz y acciones según la dirección pública de la wallet Freighter conectada y los participantes del contrato:
+
+- **Derivación de Rol Pura (`deriveWalletRole`)**:
+  - `wallet == config.parties.buyer` $\rightarrow$ **Buyer**
+  - `wallet == config.parties.supplier` $\rightarrow$ **Supplier**
+  - `wallet == config.parties.resolver` $\rightarrow$ **Resolver**
+  - Ninguna coincidencia $\rightarrow$ **Observer** (Modo solo lectura)
+  - Sin wallet conectada $\rightarrow$ **Wallet no conectada** (Rol: `—`)
+- **Sin Selectores Manuales**: Se eliminó cualquier mecanismo para simular o cambiar perfiles manualmente en la UI. Para pruebas multi-rol en demo se utilizan perfiles de navegador independientes con cuentas Freighter distintas.
+- **Separación de Dominios**:
+  - `UserRole`: Exclusivo para la identidad del usuario humano (`buyer | supplier | resolver | observer`).
+  - `EscrowActor`: Entidades de la máquina de estados Soroban (`buyer | supplier | engine | resolver | none`). Engine no es un rol humano seleccionable.
+
+---
+
+## ⚡ Matriz de Acciones de la Máquina de Estados (P0)
+
+La lógica de interacción respeta el flujo canónico del contrato:
+1. **`CREATED`**:
+   - Buyer: Fondear depósito (`FUNDED`) o cancelar previo al fondeo (`CANCELLED`).
+2. **`FUNDED`**:
+   - Supplier: Presentar evidencia documental (`EVIDENCE_SUBMITTED`).
+   - Buyer: **No** tiene acción de liberación directa desde este estado.
+3. **`EVIDENCE_SUBMITTED`**:
+   - Engine: Atestación determinista autónoma (`ATTESTED_PASS` o `ATTESTED_FAIL`).
+   - UI: Muestra indicador informativo de espera de atestación del motor.
+4. **`ATTESTED_PASS`**:
+   - Buyer: Aprobar liberación definitiva (`RELEASED`) u objetar/disputar (`DISPUTED`).
+5. **`ATTESTED_FAIL`**:
+   - Supplier: Presentar corrección técnica (`EVIDENCE_SUBMITTED`) u objetar/disputar (`DISPUTED`).
+6. **`DISPUTED`**:
+   - Resolver: Dispone de tres dictámenes posibles:
+     - `RELEASE` $\rightarrow$ Liberar a proveedor
+     - `REFUND` $\rightarrow$ Reembolsar a comprador
+     - `SPLIT` $\rightarrow$ Liquidación dividida
+7. **Permissionless `finalize()`**:
+   - Disponible para cualquier cuenta cuando el vencimiento contractual sea alcanzado en el ledger. El timestamp local es solo informativo; la autoridad pertenece a `env.ledger().timestamp()`.
+
+---
+
+## 🧪 Datos Mock de Desarrollo (`src/dev/mockEscrow.ts`)
+
+Los datos utilizados para desarrollo visual están completamente aislados en `src/dev/mockEscrow.ts` y etiquetados como **DEVELOPMENT MOCK DATA**. La UI exhibe un banner explícito:
+```
+DATOS MOCK · SIN LECTURA RPC
+```
+No se emplean direcciones ni IDs simulados como si fuesen definitivos on-chain.
 
 ---
 
@@ -66,8 +111,9 @@ Para facilitar pruebas y auditoría de los flujos de custodia condicional, la ap
 | Variable | Descripción | Valor por Defecto |
 | :--- | :--- | :--- |
 | `NEXT_PUBLIC_STELLAR_NETWORK` | Red destino de Stellar | `TESTNET` |
-| `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Frase de red para firmas | `Test SDF Network ; September 2015` |
+| `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | Passphrase oficial requerida | `Test SDF Network ; September 2015` |
 | `NEXT_PUBLIC_HORIZON_URL` | API Horizon de Stellar | `https://horizon-testnet.stellar.org` |
-| `NEXT_PUBLIC_SOROBAN_RPC_URL` | Endpoint RPC de Soroban | `https://soroban-testnet.stellar.org` |
-| `NEXT_PUBLIC_ESCROW_CONTRACT_ID` | ID de contrato Soroban P0 | Placeholder de contrato |
-| `NEXT_PUBLIC_DEMO_ASSET_CODE` | Código del activo demo B2B | `CPUSD` |
+| `NEXT_PUBLIC_SOROBAN_RPC_URL` | Endpoint RPC de Soroban Testnet | `https://soroban-testnet.stellar.org` |
+| `NEXT_PUBLIC_ESCROW_CONTRACT_ID` | ID de contrato Soroban P0 | *(Placeholder vacío)* |
+| `NEXT_PUBLIC_CPUSD_CONTRACT_ID` | ID del contrato SAC CPUSD | *(Placeholder vacío)* |
+| `NEXT_PUBLIC_DEMO_ASSET_CODE` | Código del token de liquidación B2B | `CPUSD` |

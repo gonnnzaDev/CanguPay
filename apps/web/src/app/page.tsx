@@ -11,105 +11,12 @@ import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
 import {
-  EscrowDetailsData,
   EscrowStatus,
   deriveWalletRole,
   getAvailableActions,
 } from "@/types/escrow";
 
-// Representative fixtures for CanguPay P0 state machine stages with deterministic timestamps
-const BASE_LEDGER_TIME = 1758412800; // Deterministic reference timestamp (eliminates hydration drift)
-
-const mockEscrows: Record<string, EscrowDetailsData> = {
-  FUNDED: {
-    operationId: "CANGU-OP-2026-001",
-    contractId: "CB4Z2T3A6Z7Y8X9W0V1U2T3S4R5Q6P7O8N9M0L1K2J3I4H5G6F7E8D9C",
-    status: "FUNDED",
-    amount: "15,000.0000000",
-    asset: "CPUSD",
-    parties: {
-      buyer: "GBUYER...4X9Z",
-      supplier: "GSUPPLIER...8K2L",
-      engine: "GENGINE...1V3M",
-      resolver: "GRESOLVER...9P0R",
-    },
-    activeDeadline: {
-      type: "submission",
-      label: "Envío de Evidencia Documental",
-      timestamp: BASE_LEDGER_TIME + 14400,
-    },
-    hashes: {
-      evidenceBundleHash: "0x7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
-    },
-    transactionHash: "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
-  },
-  ATTESTED_PASS: {
-    operationId: "CANGU-OP-2026-002",
-    contractId: "CB4Z2T3A6Z7Y8X9W0V1U2T3S4R5Q6P7O8N9M0L1K2J3I4H5G6F7E8D9C",
-    status: "ATTESTED_PASS",
-    amount: "25,000.0000000",
-    asset: "CPUSD",
-    parties: {
-      buyer: "GBUYER...4X9Z",
-      supplier: "GSUPPLIER...8K2L",
-      engine: "GENGINE...1V3M",
-      resolver: "GRESOLVER...9P0R",
-    },
-    activeDeadline: {
-      type: "action",
-      label: "Ventana de Objeción del Comprador",
-      timestamp: BASE_LEDGER_TIME + 7200,
-    },
-    hashes: {
-      evidenceBundleHash: "0x3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a",
-      reportHash: "0x9876543210abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    },
-    transactionHash: "b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890a1",
-  },
-  DISPUTED: {
-    operationId: "CANGU-OP-2026-003",
-    contractId: "CB4Z2T3A6Z7Y8X9W0V1U2T3S4R5Q6P7O8N9M0L1K2J3I4H5G6F7E8D9C",
-    status: "DISPUTED",
-    amount: "8,500.0000000",
-    asset: "CPUSD",
-    parties: {
-      buyer: "GBUYER...4X9Z",
-      supplier: "GSUPPLIER...8K2L",
-      engine: "GENGINE...1V3M",
-      resolver: "GRESOLVER...9P0R",
-    },
-    activeDeadline: {
-      type: "resolution",
-      label: "Resolución del Árbitro",
-      timestamp: BASE_LEDGER_TIME + 28800,
-    },
-    hashes: {
-      evidenceBundleHash: "0x11223344556677889900aabbccddeeff0011223344556677889900aabbccddee",
-      reportHash: "0xaabbccddeeff0011223344556677889900aabbccddeeff001122334455667788",
-      reasonHash: "0xccddeeff0011223344556677889900aabbccddeeff0011223344556677889900",
-      disputeEvidenceHash: "0xeeff0011223344556677889900aabbccddeeff0011223344556677889900aabb",
-    },
-    transactionHash: "c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890a1b2",
-  },
-  RELEASED: {
-    operationId: "CANGU-OP-2026-004",
-    contractId: "CB4Z2T3A6Z7Y8X9W0V1U2T3S4R5Q6P7O8N9M0L1K2J3I4H5G6F7E8D9C",
-    status: "RELEASED",
-    amount: "12,000.0000000",
-    asset: "CPUSD",
-    parties: {
-      buyer: "GBUYER...4X9Z",
-      supplier: "GSUPPLIER...8K2L",
-      engine: "GENGINE...1V3M",
-      resolver: "GRESOLVER...9P0R",
-    },
-    hashes: {
-      evidenceBundleHash: "0x44556677889900aabbccddeeff0011223344556677889900aabbccddeeff0011",
-      reportHash: "0x223344556677889900aabbccddeeff0011223344556677889900aabbccddeeff",
-    },
-    transactionHash: "d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890a1b2c3",
-  },
-};
+import { mockEscrows } from "@/dev/mockEscrow";
 
 export default function Home() {
   const [activeScenario, setActiveScenario] = useState<EscrowStatus>("FUNDED");
