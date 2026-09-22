@@ -43,11 +43,11 @@ export function ThemeSwitcher() {
         {currentOption.icon}
       </div>
 
-      {/* Maximized Horizontal Menu (Reveals on hover) */}
+      {/* Maximized Horizontal Menu (Reveals on hover: icons only) */}
       <div
         className={`flex items-center gap-0.5 transition-all duration-300 overflow-hidden ${
           isHovered
-            ? "max-w-[240px] opacity-100"
+            ? "max-w-[120px] opacity-100"
             : "max-w-0 opacity-0 pointer-events-none"
         }`}
       >
@@ -65,14 +65,13 @@ export function ThemeSwitcher() {
                 e.stopPropagation();
                 setTheme(option.value);
               }}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center justify-center w-7 h-7 rounded-md transition-all cursor-pointer ${
                 isActive
-                  ? "bg-white dark:bg-neutral-800 text-neutral-950 dark:text-neutral-50 shadow-xs font-semibold"
-                  : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200"
+                  ? "bg-white dark:bg-neutral-800 text-neutral-950 dark:text-neutral-50 shadow-xs"
+                  : "text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50"
               }`}
             >
               {option.icon}
-              <span>{option.label}</span>
             </button>
           );
         })}

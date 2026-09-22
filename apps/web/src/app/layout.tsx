@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/providers/ThemeProvider";
+import { WalletProvider } from "@/providers/WalletProvider";
+import { NetworkSecurityBanner } from "@/components/wallet/NetworkSecurityBanner";
 import { BackgroundPattern } from "@/components/ui/BackgroundPattern";
+import { FloatingScrollbar } from "@/components/ui/FloatingScrollbar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -47,8 +50,12 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 transition-colors relative">
         <ThemeProvider>
-          <BackgroundPattern />
-          <div className="relative z-10 flex flex-col flex-1">{children}</div>
+          <WalletProvider>
+            <NetworkSecurityBanner />
+            <BackgroundPattern />
+            <FloatingScrollbar />
+            <div className="relative z-10 flex flex-col flex-1">{children}</div>
+          </WalletProvider>
         </ThemeProvider>
       </body>
     </html>

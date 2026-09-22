@@ -58,6 +58,8 @@ export interface EscrowDetailsProps {
   isLoading?: boolean;
   error?: string | null;
   onRefresh?: () => void;
+  actionSlot?: React.ReactNode;
+  bannerSlot?: React.ReactNode;
 }
 
 /**

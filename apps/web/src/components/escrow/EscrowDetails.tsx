@@ -161,6 +161,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   isLoading = false,
   error = null,
   onRefresh,
+  actionSlot,
+  bannerSlot,
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const currentTime = useCurrentTimestamp();
@@ -172,20 +174,114 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
     setTimeout(() => setCopiedKey(null), 1800);
   };
 
-  // 1. Loading State (Sober Skeleton)
+  // 1. Loading State (High-Fidelity Skeleton matching current components)
   if (isLoading) {
     return (
-      <div className="w-full max-w-5xl mx-auto p-6 space-y-6 animate-pulse">
-        <div className="flex items-center justify-between">
-          <div className="h-8 bg-neutral-200 dark:bg-neutral-800 rounded w-64" />
-          <div className="h-7 bg-neutral-200 dark:bg-neutral-800 rounded w-32" />
+      <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 space-y-6 animate-pulse font-mono">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-neutral-200/80 dark:border-neutral-800/80">
+          <div className="space-y-2">
+            <div className="h-3 w-32 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-56 bg-neutral-200 dark:bg-neutral-800 rounded-md" />
+              <div className="h-6 w-6 bg-neutral-200 dark:bg-neutral-800 rounded" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-44 bg-neutral-200 dark:bg-neutral-800 rounded-lg" />
+            <div className="h-8 w-8 bg-neutral-200 dark:bg-neutral-800 rounded-lg" />
+          </div>
         </div>
+
+        {/* Primary Metrics Skeleton (Amount & Turn) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="h-32 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl" />
-          <div className="h-32 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl md:col-span-2" />
+          {/* Amount Card */}
+          <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="h-3 w-28 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+              <div className="h-4 w-16 bg-neutral-200 dark:bg-neutral-800 rounded" />
+            </div>
+            <div className="h-8 w-44 bg-neutral-200 dark:bg-neutral-800 rounded-md my-2" />
+            <div className="h-3 w-40 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+          </div>
+
+          {/* Active Turn Card */}
+          <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs md:col-span-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="h-3 w-28 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+              <div className="h-4 w-20 bg-neutral-200 dark:bg-neutral-800 rounded" />
+            </div>
+            <div className="h-5 w-48 bg-neutral-200 dark:bg-neutral-800 rounded" />
+            <div className="h-3 w-full bg-neutral-200/70 dark:bg-neutral-800/70 rounded-sm" />
+            <div className="h-3 w-3/4 bg-neutral-200/70 dark:bg-neutral-800/70 rounded-sm" />
+          </div>
         </div>
-        <div className="h-44 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl" />
-        <div className="h-56 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/60 rounded-xl" />
+
+        {/* Active Deadline Skeleton */}
+        <div className="p-4 sm:p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white/60 dark:bg-neutral-900/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 bg-neutral-200 dark:bg-neutral-800 rounded-lg shrink-0" />
+              <div className="space-y-1.5">
+                <div className="h-3 w-48 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+                <div className="h-4 w-36 bg-neutral-200 dark:bg-neutral-800 rounded" />
+              </div>
+            </div>
+            <div className="space-y-1 sm:text-right">
+              <div className="h-2.5 w-24 bg-neutral-200 dark:bg-neutral-800 rounded-sm sm:ml-auto" />
+              <div className="h-3.5 w-20 bg-neutral-200 dark:bg-neutral-800 rounded sm:ml-auto" />
+            </div>
+          </div>
+        </div>
+
+        {/* Parties Skeleton */}
+        <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs space-y-4">
+          <div className="h-3 w-44 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between"
+              >
+                <div className="space-y-1.5 flex-1">
+                  <div className="h-2.5 w-24 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+                  <div className="h-3.5 w-32 bg-neutral-200 dark:bg-neutral-800 rounded" />
+                </div>
+                <div className="h-6 w-6 bg-neutral-200 dark:bg-neutral-800 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Cryptographic Hashes Skeleton */}
+        <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs space-y-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="h-3 w-48 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+            <div className="h-4 w-16 bg-neutral-200 dark:bg-neutral-800 rounded" />
+          </div>
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-2"
+            >
+              <div className="h-3 w-36 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+              <div className="h-3.5 w-44 bg-neutral-200 dark:bg-neutral-800 rounded" />
+            </div>
+          ))}
+        </div>
+
+        {/* Lifecycle Progression Skeleton */}
+        <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs space-y-4">
+          <div className="h-3 w-40 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+          <div className="flex items-center justify-between gap-2 pt-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-neutral-200 dark:bg-neutral-800" />
+                <div className="h-2 w-14 bg-neutral-200 dark:bg-neutral-800 rounded-sm" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -237,6 +333,17 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto">
           Seleccione una operación para consultar los datos del escrow en Stellar Testnet.
         </p>
+        {onRefresh && (
+          <div className="mt-4">
+            <button
+              onClick={onRefresh}
+              className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors shadow-2xs cursor-pointer"
+            >
+              <RefreshIcon size={13} />
+              Cargar Operación Escrow
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -307,10 +414,12 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             </span>
           </div>
 
+          {actionSlot}
+
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-900"
+              className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-pointer"
               title="Refrescar datos del ledger"
             >
               <RefreshIcon size={14} />
@@ -318,6 +427,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           )}
         </div>
       </div>
+
+      {bannerSlot}
 
       {/* Primary Metrics: Amount & Current Turn */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
