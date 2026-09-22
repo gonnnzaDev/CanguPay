@@ -22,6 +22,7 @@ import {
   FileTextIcon,
   PackageIcon,
   EyeIcon,
+  CpuIcon,
 } from "@/components/icons";
 
 /**
@@ -975,110 +976,131 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
       {/* Parties / Roles Panel & Fallback Configuration */}
       <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs font-mono">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3.5">
           <div className="flex items-center gap-2">
             <ScaleIcon size={15} className="text-neutral-400" />
             <h3 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest">
               PARTICIPANTES DE LA OPERACIÓN
             </h3>
           </div>
-          <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-            Freighter Accounts
+          <span className="text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
+            <span>FREIGHTER ACCOUNTS</span>
+            <span className="hidden sm:inline opacity-60">· Pasa el cursor para inspeccionar wallet</span>
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-4">
-          {/* Buyer */}
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
-            <div className="truncate">
-              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
-                Comprador (Buyer)
-              </span>
-              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
-                {data.parties.buyer}
-              </span>
-            </div>
-            <button
-              onClick={() => handleCopy(data.parties.buyer, "buyer")}
-              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-              title="Copiar dirección"
-            >
-              {copiedKey === "buyer" ? (
-                <CheckIcon size={14} className="text-emerald-500" />
-              ) : (
-                <CopyIcon size={14} />
-              )}
-            </button>
-          </div>
+        {/* Compact Minimized Participant Chips (Expands on Hover / Keyboard Focus) */}
+        <div className="flex flex-wrap items-center gap-2.5 mb-4">
+          {[
+            {
+              key: "buyer",
+              label: "Buyer",
+              roleDesc: "Comprador",
+              address: data.parties.buyer,
+              icon: UserIcon,
+              iconBg: "bg-blue-500/10 dark:bg-blue-500/20",
+              iconColor: "text-blue-600 dark:text-blue-400",
+              hoverBorder: "hover:border-blue-500/40 focus-within:border-blue-500/40",
+              isCurrentViewer: viewerRole === "buyer",
+            },
+            {
+              key: "supplier",
+              label: "Supplier",
+              roleDesc: "Proveedor",
+              address: data.parties.supplier,
+              icon: PackageIcon,
+              iconBg: "bg-amber-500/10 dark:bg-amber-500/20",
+              iconColor: "text-amber-600 dark:text-amber-400",
+              hoverBorder: "hover:border-amber-500/40 focus-within:border-amber-500/40",
+              isCurrentViewer: viewerRole === "supplier",
+            },
+            {
+              key: "engine",
+              label: "Engine",
+              roleDesc: "Motor Atestador",
+              address: data.parties.engine,
+              icon: CpuIcon,
+              iconBg: "bg-purple-500/10 dark:bg-purple-500/20",
+              iconColor: "text-purple-600 dark:text-purple-400",
+              hoverBorder: "hover:border-purple-500/40 focus-within:border-purple-500/40",
+              isCurrentViewer: false,
+            },
+            {
+              key: "resolver",
+              label: "Resolver",
+              roleDesc: "Árbitro Neutral",
+              address: data.parties.resolver,
+              icon: ScaleIcon,
+              iconBg: "bg-teal-500/10 dark:bg-teal-500/20",
+              iconColor: "text-teal-600 dark:text-teal-400",
+              hoverBorder: "hover:border-teal-500/40 focus-within:border-teal-500/40",
+              isCurrentViewer: viewerRole === "resolver",
+            },
+          ].map((p) => {
+            const isCopied = copiedKey === p.key;
+            return (
+              <div
+                key={p.key}
+                tabIndex={0}
+                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-neutral-50/70 dark:bg-neutral-900/70 hover:bg-white dark:hover:bg-neutral-850 hover:shadow-xs transition-all duration-300 ease-out cursor-pointer select-none ${p.hoverBorder}`}
+                title={`${p.label} (${p.roleDesc}): ${p.address}`}
+                onClick={() => handleCopy(p.address, p.key)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleCopy(p.address, p.key);
+                  }
+                }}
+              >
+                {/* Custom Role Icon with Palette */}
+                <div
+                  className={`p-1.5 rounded-lg ${p.iconBg} ${p.iconColor} shrink-0 transition-transform group-hover:scale-105 duration-200`}
+                >
+                  <p.icon size={14} />
+                </div>
 
-          {/* Supplier */}
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
-            <div className="truncate">
-              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
-                Proveedor (Supplier)
-              </span>
-              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
-                {data.parties.supplier}
-              </span>
-            </div>
-            <button
-              onClick={() => handleCopy(data.parties.supplier, "supplier")}
-              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-              title="Copiar dirección"
-            >
-              {copiedKey === "supplier" ? (
-                <CheckIcon size={14} className="text-emerald-500" />
-              ) : (
-                <CopyIcon size={14} />
-              )}
-            </button>
-          </div>
+                {/* Minimized Role Label */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 tracking-tight">
+                    {p.label}
+                  </span>
+                  {p.isCurrentViewer && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30">
+                      TÚ
+                    </span>
+                  )}
+                </div>
 
-          {/* Engine */}
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
-            <div className="truncate">
-              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
-                Motor de Atestación (Engine)
-              </span>
-              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
-                {data.parties.engine}
-              </span>
-            </div>
-            <button
-              onClick={() => handleCopy(data.parties.engine, "engine")}
-              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-              title="Copiar dirección"
-            >
-              {copiedKey === "engine" ? (
-                <CheckIcon size={14} className="text-emerald-500" />
-              ) : (
-                <CopyIcon size={14} />
-              )}
-            </button>
-          </div>
-
-          {/* Resolver */}
-          <div className="p-3 rounded-lg bg-neutral-50 dark:bg-neutral-900/90 border border-neutral-200/50 dark:border-neutral-800/60 flex items-center justify-between gap-2">
-            <div className="truncate">
-              <span className="text-neutral-400 block mb-0.5 uppercase text-[10px] tracking-wider font-semibold">
-                Árbitro Neutral (Resolver)
-              </span>
-              <span className="text-neutral-800 dark:text-neutral-200 truncate block">
-                {data.parties.resolver}
-              </span>
-            </div>
-            <button
-              onClick={() => handleCopy(data.parties.resolver, "resolver")}
-              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-              title="Copiar dirección"
-            >
-              {copiedKey === "resolver" ? (
-                <CheckIcon size={14} className="text-emerald-500" />
-              ) : (
-                <CopyIcon size={14} />
-              )}
-            </button>
-          </div>
+                {/* Animated Expandable Address & Copy Button (Expands on Hover / Keyboard Focus) */}
+                <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-750">
+                  {isCopied ? (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1">
+                      <CheckIcon size={12} />
+                      ¡Copiado!
+                    </span>
+                  ) : (
+                    <>
+                      <span className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 font-medium shrink-0">
+                        {truncateHash(p.address, 4, 4)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopy(p.address, p.key);
+                        }}
+                        className="p-1 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+                        title="Copiar dirección completa"
+                        aria-label={`Copiar dirección de ${p.label}`}
+                      >
+                        <CopyIcon size={12} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Fallback Contractual Configuration Card */}
