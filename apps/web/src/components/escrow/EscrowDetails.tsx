@@ -729,7 +729,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               icon: UserIcon,
               iconBg: "bg-blue-500/10 dark:bg-blue-500/20",
               iconColor: "text-blue-600 dark:text-blue-400",
-              hoverBorder: "hover:border-blue-500/40 focus-within:border-blue-500/40",
+              hoverBg: "hover:bg-blue-50/60 dark:hover:bg-blue-950/40",
+              hoverBorder: "hover:border-blue-500/40 dark:hover:border-blue-400/40 focus-within:border-blue-500/40 dark:focus-within:border-blue-400/40",
               isCurrentViewer: viewerRole === "buyer",
             },
             {
@@ -740,7 +741,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               icon: PackageIcon,
               iconBg: "bg-amber-500/10 dark:bg-amber-500/20",
               iconColor: "text-amber-600 dark:text-amber-400",
-              hoverBorder: "hover:border-amber-500/40 focus-within:border-amber-500/40",
+              hoverBg: "hover:bg-amber-50/60 dark:hover:bg-amber-950/40",
+              hoverBorder: "hover:border-amber-500/40 dark:hover:border-amber-400/40 focus-within:border-amber-500/40 dark:focus-within:border-amber-400/40",
               isCurrentViewer: viewerRole === "supplier",
             },
             {
@@ -751,7 +753,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               icon: CpuIcon,
               iconBg: "bg-purple-500/10 dark:bg-purple-500/20",
               iconColor: "text-purple-600 dark:text-purple-400",
-              hoverBorder: "hover:border-purple-500/40 focus-within:border-purple-500/40",
+              hoverBg: "hover:bg-purple-50/60 dark:hover:bg-purple-950/40",
+              hoverBorder: "hover:border-purple-500/40 dark:hover:border-purple-400/40 focus-within:border-purple-500/40 dark:focus-within:border-purple-400/40",
               isCurrentViewer: false,
             },
             {
@@ -762,7 +765,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               icon: ScaleIcon,
               iconBg: "bg-teal-500/10 dark:bg-teal-500/20",
               iconColor: "text-teal-600 dark:text-teal-400",
-              hoverBorder: "hover:border-teal-500/40 focus-within:border-teal-500/40",
+              hoverBg: "hover:bg-teal-50/60 dark:hover:bg-teal-950/40",
+              hoverBorder: "hover:border-teal-500/40 dark:hover:border-teal-400/40 focus-within:border-teal-500/40 dark:focus-within:border-teal-400/40",
               isCurrentViewer: viewerRole === "resolver",
             },
           ].map((p) => {
@@ -771,7 +775,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               <div
                 key={p.key}
                 tabIndex={0}
-                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-neutral-50/70 dark:bg-neutral-900/70 hover:bg-white dark:hover:bg-neutral-850 hover:shadow-xs transition-all duration-300 ease-out cursor-pointer select-none ${p.hoverBorder}`}
+                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 ${p.hoverBg} hover:shadow-xs dark:hover:shadow-neutral-950/50 transition-all duration-300 ease-out cursor-pointer select-none ${p.hoverBorder}`}
                 title={`${p.label} (${p.roleDesc}): ${p.address}`}
                 onClick={() => handleCopy(p.address, p.key)}
                 onKeyDown={(e) => {
@@ -790,7 +794,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
                 {/* Minimized Role Label */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 tracking-tight">
+                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-100 tracking-tight">
                     {p.label}
                   </span>
                   {p.isCurrentViewer && (
@@ -801,7 +805,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 </div>
 
                 {/* Animated Expandable Address & Copy Button (Expands on Hover / Keyboard Focus) */}
-                <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-750">
+                <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
                   {isCopied ? (
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1">
                       <CheckIcon size={12} />
@@ -809,7 +813,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                     </span>
                   ) : (
                     <>
-                      <span className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 font-medium shrink-0">
+                      <span className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300 font-medium shrink-0">
                         {truncateHash(p.address, 4, 4)}
                       </span>
                       <button
@@ -818,7 +822,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                           e.stopPropagation();
                           handleCopy(p.address, p.key);
                         }}
-                        className="p-1 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+                        className="p-1 rounded text-neutral-400 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
                         title="Copiar dirección completa"
                         aria-label={`Copiar dirección de ${p.label}`}
                       >
