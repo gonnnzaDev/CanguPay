@@ -86,9 +86,9 @@ export default function Home() {
                 ? `${action.fullName} — ${actionDesc}`
                 : `${action.fullName} — ${actionDesc} (${t("common.pending_onchain")})`
             }
-            className={`px-3 py-1.5 rounded-lg font-mono text-xs font-semibold shadow-2xs flex items-center gap-1.5 border transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-mono text-xs font-semibold shadow-2xs flex items-center gap-1.5 border transition-all duration-150 ${
               isInteractive
-                ? "border-teal-600 bg-teal-600 text-white hover:bg-teal-700 cursor-pointer opacity-100"
+                ? "border-teal-600 bg-teal-600 text-white hover:bg-teal-700 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] cursor-pointer opacity-100 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
                 : action.variant === "danger"
                   ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300 opacity-60 cursor-not-allowed"
                   : action.variant === "secondary"
@@ -202,72 +202,92 @@ export default function Home() {
 
       {/* Discreet Floating Dev Toolbar */}
       <div className="fixed bottom-4 right-4 z-40">
-        {!isDevToolbarOpen ? (
-          <button
-            type="button"
-            onClick={() => setIsDevToolbarOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900/90 dark:bg-neutral-800/90 hover:bg-neutral-800 dark:hover:bg-neutral-700/90 text-neutral-200 border border-amber-500/30 shadow-lg backdrop-blur-md font-mono text-xs cursor-pointer transition-all duration-200 group"
-            title={t("alerts.dev_preview")}
+        <div className="relative">
+          {/* Collapsed Pill */}
+          <div
+            className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isDevToolbarOpen
+                ? "opacity-0 scale-95 pointer-events-none absolute inset-0"
+                : "opacity-100 scale-100"
+            }`}
+            aria-hidden={isDevToolbarOpen}
           >
-            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="font-semibold tracking-wider text-[11px] text-amber-300">
-              DEV · MOCK
-            </span>
-            <span className="text-[10px] text-neutral-400 font-normal">
-              [{activeScenario}]
-            </span>
-          </button>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2.5 px-3.5 py-2 rounded-xl bg-neutral-900/95 dark:bg-neutral-900/95 text-neutral-100 border border-amber-500/40 shadow-2xl backdrop-blur-md font-mono text-xs">
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-[10px] font-bold tracking-widest text-amber-400 uppercase">
-                {t("alerts.dev_preview")}
-              </span>
-            </div>
-
-            <div className="h-4 w-px bg-neutral-700 shrink-0" />
-
-            {/* Scenario Selector */}
-            <select
-              value={activeScenario}
-              onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
-              className="text-[11px] bg-neutral-800 border border-neutral-700 hover:border-amber-500/50 text-neutral-200 rounded-md px-2 py-1 font-mono cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
-              title="Escenario de desarrollo"
-              aria-label="Escenario de desarrollo"
-            >
-              {Object.keys(mockEscrows).map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-
-            {/* Simular Vencimiento */}
-            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700 rounded-md px-2 py-1 select-none transition-colors">
-              <input
-                type="checkbox"
-                checked={isSimulatingExpired}
-                onChange={(e) => setIsSimulatingExpired(e.target.checked)}
-                className="rounded border-neutral-600 text-teal-500 focus:ring-0 cursor-pointer h-3.5 w-3.5"
-              />
-              <span className="text-neutral-300 font-medium text-[10px] tracking-wide">
-                {t("alerts.simulate_expiry")}
-              </span>
-            </label>
-
-            {/* Collapse button */}
             <button
               type="button"
-              onClick={() => setIsDevToolbarOpen(false)}
-              className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer ml-1"
-              title={t("common.close")}
-              aria-label={t("common.close")}
+              onClick={() => setIsDevToolbarOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900/90 dark:bg-neutral-800/90 hover:bg-neutral-800 dark:hover:bg-neutral-700/90 text-neutral-200 border border-amber-500/30 shadow-lg backdrop-blur-md font-mono text-xs cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:outline-none transition-all duration-150 group"
+              title={t("alerts.dev_preview")}
             >
-              <CloseIcon size={14} />
+              <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+              <span className="font-semibold tracking-wider text-[11px] text-amber-300">
+                DEV · MOCK
+              </span>
+              <span className="text-[10px] text-neutral-400 font-normal">
+                [{activeScenario}]
+              </span>
             </button>
           </div>
-        )}
+
+          {/* Expanded Popover Panel */}
+          <div
+            className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] origin-bottom-right ${
+              isDevToolbarOpen
+                ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+                : "opacity-0 scale-95 translate-y-2 pointer-events-none absolute bottom-0 right-0"
+            }`}
+            aria-hidden={!isDevToolbarOpen}
+          >
+            <div className="flex flex-wrap items-center gap-2.5 px-3.5 py-2 rounded-xl bg-neutral-900/95 dark:bg-neutral-900/95 text-neutral-100 border border-amber-500/40 shadow-2xl backdrop-blur-md font-mono text-xs">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-[10px] font-bold tracking-widest text-amber-400 uppercase">
+                  {t("alerts.dev_preview")}
+                </span>
+              </div>
+
+              <div className="h-4 w-px bg-neutral-700 shrink-0" />
+
+              {/* Scenario Selector */}
+              <select
+                value={activeScenario}
+                onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
+                className="text-[11px] bg-neutral-800 border border-neutral-700 hover:border-amber-500/50 text-neutral-200 rounded-md px-2 py-1 font-mono cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500 focus-visible:ring-2 focus-visible:ring-amber-500/50 transition-colors"
+                title="Escenario de desarrollo"
+                aria-label="Escenario de desarrollo"
+              >
+                {Object.keys(mockEscrows).map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+
+              {/* Simular Vencimiento */}
+              <label className="flex items-center gap-1.5 cursor-pointer text-[11px] bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700 rounded-md px-2 py-1 select-none transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0">
+                <input
+                  type="checkbox"
+                  checked={isSimulatingExpired}
+                  onChange={(e) => setIsSimulatingExpired(e.target.checked)}
+                  className="rounded border-neutral-600 text-teal-500 focus:ring-0 cursor-pointer h-3.5 w-3.5 transition-colors"
+                />
+                <span className="text-neutral-300 font-medium text-[10px] tracking-wide">
+                  {t("alerts.simulate_expiry")}
+                </span>
+              </label>
+
+              {/* Collapse button */}
+              <button
+                type="button"
+                onClick={() => setIsDevToolbarOpen(false)}
+                className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer ml-1 focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:outline-none"
+                title={t("common.close")}
+                aria-label={t("common.close")}
+              >
+                <CloseIcon size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Create Escrow Modal */}

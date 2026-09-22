@@ -256,7 +256,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             <div className="mt-4 pt-3 border-t border-rose-500/10 flex justify-end">
               <button
                 onClick={onRefresh}
-                className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 hover:opacity-90 transition-opacity cursor-pointer font-mono"
+                className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer font-mono focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
               >
                 <RefreshIcon size={13} />
                 {t("alerts.retry_sync")}
@@ -285,7 +285,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           {onCreateEscrow && (
             <button
               onClick={onCreateEscrow}
-              className="inline-flex items-center gap-2 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition-colors shadow-2xs cursor-pointer font-mono"
+              className="inline-flex items-center gap-2 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 shadow-2xs cursor-pointer font-mono focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
             >
               <ShieldLockIcon size={14} />
               {t("alerts.create_new_escrow")}
@@ -294,7 +294,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors shadow-2xs cursor-pointer font-mono"
+              className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 shadow-2xs cursor-pointer font-mono focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
             >
               <RefreshIcon size={13} />
               {t("alerts.load_escrow")}
@@ -472,7 +472,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             </h1>
             <button
               onClick={() => handleCopy(data.operationId, "operationId")}
-              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
               title={t("common.copy")}
               aria-label={t("common.copy")}
             >
@@ -488,7 +488,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         {onRefresh && (
           <button
             onClick={onRefresh}
-            className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-pointer"
+            className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-all duration-150 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
             title={t("common.refresh")}
             aria-label={t("common.refresh")}
           >
@@ -578,7 +578,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   type="button"
                   onClick={connectFreighter}
                   disabled={isConnecting}
-                  className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer flex items-center gap-1.5 shadow-2xs focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
                 >
                   <WalletIcon size={14} />
                   <span>
@@ -624,7 +624,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             <div className="absolute top-3.5 left-6 right-6 h-0.5 bg-neutral-200 dark:bg-neutral-800 -z-0" />
             {/* Active connecting rail line */}
             <div
-              className="absolute top-3.5 left-6 h-0.5 bg-teal-500 dark:bg-teal-400 -z-0 transition-all duration-300"
+              className="absolute top-3.5 left-6 h-0.5 bg-teal-500 dark:bg-teal-400 -z-0 transition-all duration-500 ease-out"
               style={{
                 width: `${Math.min(100, Math.max(0, (activeIndex / 5) * 100))}%`,
                 maxWidth: "calc(100% - 3rem)",
@@ -648,32 +648,32 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 >
                   {/* Circle Node */}
                   <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ${
+                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 ease-out ${
                       isCompleted
                         ? "bg-teal-500 dark:bg-teal-500 text-white shadow-xs"
                         : isCurrent
                           ? isAlert
-                            ? "bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500 text-rose-600 dark:text-rose-400 ring-4 ring-rose-500/20 animate-pulse"
-                            : "bg-teal-50 dark:bg-teal-950/60 border-2 border-teal-500 text-teal-600 dark:text-teal-400 ring-4 ring-teal-500/20 animate-pulse"
+                            ? "bg-rose-50 dark:bg-rose-950/60 border-2 border-rose-500 text-rose-600 dark:text-rose-400 ring-4 ring-rose-500/20 animate-breath-rose"
+                            : "bg-teal-50 dark:bg-teal-950/60 border-2 border-teal-500 text-teal-600 dark:text-teal-400 ring-4 ring-teal-500/20 dark:ring-teal-400/20 animate-breath"
                           : "bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-neutral-400 dark:text-neutral-500"
                     }`}
                   >
                     {isCompleted ? (
-                      <CheckIcon size={12} className="stroke-[3]" />
+                      <CheckIcon size={12} className="stroke-[3] transition-all duration-300 ease-out opacity-100 scale-100" />
                     ) : isCurrent ? (
                       <span
                         className={`w-2 h-2 rounded-full ${
                           isAlert ? "bg-rose-500" : "bg-teal-500"
-                        }`}
+                        } transition-transform duration-300`}
                       />
                     ) : (
-                      <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-600" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-600 transition-colors duration-300" />
                     )}
                   </div>
 
                   {/* Label */}
                   <span
-                    className={`mt-2 text-[11px] font-mono tracking-tight text-center truncate max-w-[85px] transition-colors ${
+                    className={`mt-2 text-[11px] font-mono tracking-tight text-center truncate max-w-[85px] transition-colors duration-200 ${
                       isCurrent
                         ? isAlert
                           ? "font-bold text-rose-700 dark:text-rose-400"
@@ -712,7 +712,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               <div
                 key={p.key}
                 tabIndex={0}
-                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 ${p.hoverBg} hover:shadow-xs dark:hover:shadow-neutral-950/50 transition-all duration-300 ease-out cursor-pointer select-none ${p.hoverBorder}`}
+                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 ${p.hoverBg} hover:shadow-xs dark:hover:shadow-neutral-950/50 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer select-none ${p.hoverBorder} focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none`}
                 title={`${p.label} (${p.roleDesc}): ${p.address}`}
                 onClick={() => handleCopy(p.address, p.key)}
                 onKeyDown={(e) => {
@@ -723,7 +723,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 }}
               >
                 <div
-                  className={`p-1.5 rounded-lg ${p.iconBg} ${p.iconColor} shrink-0 transition-transform group-hover:scale-105 duration-200`}
+                  className={`p-1.5 rounded-lg ${p.iconBg} ${p.iconColor} shrink-0 transition-transform duration-200 group-hover:scale-105`}
                 >
                   <p.icon size={14} />
                 </div>
@@ -740,10 +740,10 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 </div>
 
                 {/* Animated Expandable Address & Copy Button */}
-                <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
+                <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-[max-width,padding,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
                   {isCopied ? (
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1">
-                      <CheckIcon size={12} />
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1 transition-all duration-200 ease-out animate-in fade-in zoom-in-90">
+                      <CheckIcon size={12} className="stroke-[3]" />
                       {t("common.copied")}
                     </span>
                   ) : (
@@ -757,7 +757,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                           e.stopPropagation();
                           handleCopy(p.address, p.key);
                         }}
-                        className="p-1 rounded text-neutral-400 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+                        className="p-1 rounded text-neutral-400 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-all duration-150 hover:scale-110 active:scale-95 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
                         title={t("common.copy_full_address")}
                         aria-label={t("common.copy_full_address")}
                       >
@@ -795,7 +795,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         <button
           type="button"
           onClick={() => setIsTechDetailsOpen(!isTechDetailsOpen)}
-          className="w-full flex items-center justify-between py-2 text-xs text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors cursor-pointer group"
+          className="w-full flex items-center justify-between py-2 text-xs text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors cursor-pointer group rounded-lg focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
           aria-expanded={isTechDetailsOpen}
         >
           <div className="flex items-center gap-2">
@@ -811,20 +811,27 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px]">
-            <span className="text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300">
+            <span className="text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors">
               {isTechDetailsOpen ? t("common.collapse") : t("common.expand")}
             </span>
             <ChevronDownIcon
               size={14}
-              className={`transition-transform duration-200 text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 ${
+              className={`transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 ${
                 isTechDetailsOpen ? "rotate-180" : ""
               }`}
             />
           </div>
         </button>
 
-        {isTechDetailsOpen && (
-          <div className="pt-3 pb-2 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+            isTechDetailsOpen
+              ? "grid-rows-[1fr] opacity-100 mt-2"
+              : "grid-rows-[0fr] opacity-0 pointer-events-none"
+          }`}
+          aria-hidden={!isTechDetailsOpen}
+        >
+          <div className="overflow-hidden space-y-4 pt-1">
             {/* The 4 Cryptographic Hash Chips */}
             <div>
               <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest block mb-2">
@@ -839,9 +846,9 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                     <div
                       key={item.key}
                       tabIndex={hasHash ? 0 : -1}
-                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all duration-300 ease-out select-none ${
+                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
                         hasHash
-                          ? `border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 ${item.hoverBg} ${item.hoverBorder} hover:shadow-xs dark:hover:shadow-neutral-950/50 cursor-pointer`
+                          ? `border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 ${item.hoverBg} ${item.hoverBorder} hover:shadow-xs dark:hover:shadow-neutral-950/50 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none`
                           : "border-neutral-200/50 dark:border-neutral-800/50 bg-neutral-50/40 dark:bg-neutral-900/40 opacity-55 cursor-default"
                       }`}
                       title={
@@ -862,7 +869,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                       }}
                     >
                       <div
-                        className={`p-1.5 rounded-lg ${item.iconBg} ${item.iconColor} shrink-0 transition-transform ${hasHash ? "group-hover:scale-105 duration-200" : ""}`}
+                        className={`p-1.5 rounded-lg ${item.iconBg} ${item.iconColor} shrink-0 transition-transform duration-200 ${hasHash ? "group-hover:scale-105" : ""}`}
                       >
                         <item.icon size={14} />
                       </div>
@@ -882,10 +889,10 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
                       {/* Expandable Hash & Copy Button */}
                       {hasHash && item.hash && (
-                        <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
+                        <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-[max-width,padding,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
                           {isCopied ? (
-                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1">
-                              <CheckIcon size={12} />
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1 transition-all duration-200 ease-out animate-in fade-in zoom-in-90">
+                              <CheckIcon size={12} className="stroke-[3]" />
                               {t("common.copied")}
                             </span>
                           ) : (
@@ -899,7 +906,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                                   e.stopPropagation();
                                   handleCopy(item.hash!, item.key);
                                 }}
-                                className="p-1 rounded text-neutral-400 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+                                className="p-1 rounded text-neutral-400 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-all duration-150 hover:scale-110 active:scale-95 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
                                 title={t("common.copy_full_hash")}
                                 aria-label={t("common.copy_full_hash")}
                               >
@@ -929,7 +936,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                     <button
                       type="button"
                       onClick={() => handleCopy(data.contractId!, "contractId")}
-                      className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
+                      className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
                       title={t("common.copy")}
                     >
                       {copiedKey === "contractId" ? (
@@ -958,7 +965,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   href={explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-teal-600 dark:text-teal-400 hover:underline font-semibold text-xs"
+                  className="inline-flex items-center gap-1.5 text-teal-600 dark:text-teal-400 hover:underline hover:-translate-y-0.5 transition-all duration-150 font-semibold text-xs focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none rounded"
                 >
                   <span>{t("alerts.explorer_link")}</span>
                   <ExternalLinkIcon size={13} />
@@ -966,7 +973,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               )}
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

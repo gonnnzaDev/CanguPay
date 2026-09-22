@@ -138,7 +138,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-escrow-title"
-        className="relative w-full max-w-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[90vh] transition-all duration-200 ease-out animate-in fade-in zoom-in-95"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200/80 dark:border-neutral-800/80">
@@ -157,7 +157,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
           </div>
           <button
             onClick={handleModalClose}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
             aria-label={t("common.close")}
           >
             <CloseIcon size={16} />
@@ -181,7 +181,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                 <button
                   type="button"
                   onClick={handleModalClose}
-                  className="px-4 py-2 rounded-lg bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 font-semibold hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none shadow-2xs"
                 >
                   {t("create_modal.dismiss_btn")}
                 </button>
@@ -217,7 +217,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                   value={buyer}
                   onChange={(e) => setBuyerInput(e.target.value)}
                   placeholder="G..."
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono text-xs"
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150 font-mono text-xs"
                 />
               </div>
 
@@ -231,7 +231,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                   value={supplier}
                   onChange={(e) => setSupplier(e.target.value)}
                   placeholder="GSUPPLIER..."
-                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono text-xs"
+                  className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150 font-mono text-xs"
                 />
               </div>
 
@@ -246,7 +246,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                     value={resolver}
                     onChange={(e) => setResolver(e.target.value)}
                     placeholder="GRESOLVER..."
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono text-xs"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150 font-mono text-xs"
                   />
                 </div>
                 <div className="space-y-1">
@@ -258,7 +258,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                     value={engine}
                     onChange={(e) => setEngine(e.target.value)}
                     placeholder="GENGINE..."
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono text-xs"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150 font-mono text-xs"
                   />
                 </div>
               </div>
@@ -274,7 +274,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     placeholder="C..."
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono text-xs"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150 font-mono text-xs"
                   />
                 </div>
                 <div className="space-y-1">
@@ -286,7 +286,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="10,000.0000000"
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono text-xs"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150 font-mono text-xs"
                   />
                 </div>
               </div>
@@ -304,7 +304,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                     <select
                       value={fallbackOutcome}
                       onChange={(e) => setFallbackOutcome(e.target.value as FallbackOutcome)}
-                      className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 font-mono text-xs cursor-pointer"
+                      className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 font-mono text-xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150"
                     >
                       <option value="SPLIT">SPLIT (División Porcentual)</option>
                       <option value="RELEASE">RELEASE (Liberar al Proveedor)</option>
@@ -324,7 +324,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                         step="100"
                         value={fallbackSplitBps}
                         onChange={(e) => setFallbackSplitBps(parseInt(e.target.value) || 5000)}
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 font-mono text-xs"
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none transition-colors duration-150"
                       />
                     </div>
                   )}
@@ -343,14 +343,14 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                 <button
                   type="button"
                   onClick={handleModalClose}
-                  className="px-3.5 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
                 >
                   {t("create_modal.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={!isValid}
-                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 flex items-center gap-1.5 shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
                 >
                   <span>{t("create_modal.submit_btn")}</span>
                 </button>

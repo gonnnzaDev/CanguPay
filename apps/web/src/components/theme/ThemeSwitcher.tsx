@@ -29,7 +29,7 @@ export function ThemeSwitcher() {
         }
       }}
       tabIndex={0}
-      className="flex items-center p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100/70 dark:bg-neutral-900/70 shadow-2xs font-mono transition-all duration-300 ease-out cursor-pointer select-none"
+      className="flex items-center p-0.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-100/70 dark:bg-neutral-900/70 shadow-2xs font-mono transition-all duration-300 ease-out cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
     >
       {/* Minimized Icon (Visible when not hovered) */}
       <div
@@ -65,7 +65,7 @@ export function ThemeSwitcher() {
                 e.stopPropagation();
                 setTheme(option.value);
               }}
-              className={`flex items-center justify-center w-7 h-7 rounded-md transition-all cursor-pointer ${
+              className={`flex items-center justify-center w-7 h-7 rounded-md transition-all duration-150 hover:scale-105 active:scale-95 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none ${
                 isActive
                   ? "bg-white dark:bg-neutral-800 text-neutral-950 dark:text-neutral-50 shadow-xs"
                   : "text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50"

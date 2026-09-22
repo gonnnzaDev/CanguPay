@@ -131,7 +131,7 @@ export function WalletConnection() {
             e.preventDefault();
             connectFreighter();
           }}
-          className="inline-flex items-center px-2.5 py-1 rounded-lg border border-teal-600/80 dark:border-teal-500/80 bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-semibold font-mono transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+          className="inline-flex items-center px-2.5 py-1 rounded-lg border border-teal-600/80 dark:border-teal-500/80 bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-semibold font-mono hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer disabled:opacity-50 shadow-2xs focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
           title={isFreighterInstalled ? t("wallet.connect_wallet") : t("wallet.install_freighter")}
         >
           {isConnecting
@@ -190,7 +190,7 @@ export function WalletConnection() {
         <button
           type="button"
           onClick={() => handleCopy(address)}
-          className="p-1 rounded text-neutral-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+          className="p-1 rounded text-neutral-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all duration-150 hover:scale-110 active:scale-95 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none"
           title={t("common.copy_full_address")}
           aria-label={t("common.copy_full_address")}
         >
@@ -209,7 +209,7 @@ export function WalletConnection() {
           e.preventDefault();
           disconnectFreighter();
         }}
-        className="group inline-flex items-center justify-center p-1.5 rounded-lg border border-red-200/80 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-700 dark:hover:text-red-300 transition-all cursor-pointer shadow-2xs"
+        className="group inline-flex items-center justify-center p-1.5 rounded-lg border border-red-200/80 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-700 dark:hover:text-red-300 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer shadow-2xs focus-visible:ring-2 focus-visible:ring-red-500/50 focus-visible:outline-none"
         title={t("wallet.disconnect")}
         aria-label={t("wallet.disconnect")}
       >
