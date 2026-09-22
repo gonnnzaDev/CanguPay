@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useWallet } from "@/providers/WalletProvider";
 import {
   CopyIcon,
@@ -12,6 +12,7 @@ import {
 /**
  * Clean wallet connection component.
  * Displays real Freighter address when connected, or connection triggers when disconnected.
+ * When connected and on Testnet, fetches native XLM balance via Horizon Testnet client-side.
  * No fake profiles, no fake balance, no manual role switching.
  */
 export function WalletConnection() {
@@ -23,9 +24,82 @@ export function WalletConnection() {
     connectFreighter,
     disconnectFreighter,
     isSigningBlocked,
+    isExactTestnet,
   } = useWallet();
 
   const [copied, setCopied] = useState(false);
+  const [balance, setBalance] = useState<string | null>(null);
+  const [isBalanceLoading, setIsBalanceLoading] = useState<boolean>(false);
+  const [balanceError, setBalanceError] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isConnected || !address || !isExactTestnet) {
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function fetchHorizonBalance() {
+      setIsBalanceLoading(true);
+      setBalanceError(false);
+      try {
+        const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`, {
+          signal: controller.signal,
+        });
+
+        if (!isMounted) return;
+
+        if (res.status === 404) {
+          // Account exists in wallet but not funded on Testnet ledger yet
+          setBalance("0.00 XLM");
+          setIsBalanceLoading(false);
+          return;
+        }
+
+        if (!res.ok) {
+          setBalanceError(true);
+          setIsBalanceLoading(false);
+          return;
+        }
+
+        const data = await res.json();
+        const nativeBalance = data.balances?.find(
+          (b: { asset_type: string; balance: string }) => b.asset_type === "native"
+        );
+
+        if (nativeBalance && nativeBalance.balance) {
+          const num = parseFloat(nativeBalance.balance);
+          const formatted = num.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          setBalance(`${formatted} XLM`);
+        } else {
+          setBalance("0.00 XLM");
+        }
+      } catch (err: unknown) {
+        if ((err as Error)?.name !== "AbortError") {
+          setBalanceError(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsBalanceLoading(false);
+        }
+      }
+    }
+
+    fetchHorizonBalance();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [isConnected, address, isExactTestnet]);
+
+  const displayBalance = !isConnected || !address || !isExactTestnet ? null : balance;
+  const displayLoading = !isConnected || !address || !isExactTestnet ? false : isBalanceLoading;
+  const displayError = !isConnected || !address || !isExactTestnet ? false : balanceError;
 
   const handleCopy = (addr: string) => {
     if (navigator.clipboard) {
@@ -70,6 +144,25 @@ export function WalletConnection() {
 
   return (
     <div className="flex items-center gap-2 font-mono">
+      {/* Native XLM Balance Pill */}
+      <div
+        className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-teal-500/30 bg-teal-500/[0.05] dark:bg-teal-500/[0.08] text-xs shadow-2xs"
+        title="Balance de XLM nativo en Stellar Testnet"
+      >
+        <span className="text-[10px] uppercase font-bold text-teal-700/80 dark:text-teal-400/80">
+          XLM:
+        </span>
+        <span className="text-teal-800 dark:text-teal-200 font-semibold text-[11px]">
+          {displayLoading ? (
+            <span className="animate-pulse">...</span>
+          ) : displayError ? (
+            <span className="text-neutral-400">n/d</span>
+          ) : (
+            displayBalance || "0.00 XLM"
+          )}
+        </span>
+      </div>
+
       {/* Connected Address Pill */}
       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white/90 dark:bg-neutral-900/90 text-xs shadow-2xs">
         {/* Status Dot */}

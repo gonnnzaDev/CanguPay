@@ -10,6 +10,7 @@ import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
+import { CreateEscrowModal } from "@/components/escrow/CreateEscrowModal";
 import {
   EscrowStatus,
   deriveWalletRole,
@@ -23,6 +24,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [isEmpty, setIsEmpty] = useState<boolean>(false);
+  const [isSimulatingExpired, setIsSimulatingExpired] = useState<boolean>(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
 
   const {
     address,
@@ -44,8 +47,14 @@ export default function Home() {
   const currentData = isEmpty ? null : mockEscrows[activeScenario] || null;
   const derivedRole = deriveWalletRole(address, currentData?.parties);
   const availableActions = currentData
-    ? getAvailableActions(derivedRole, currentData.status, false)
+    ? getAvailableActions(derivedRole, currentData.status, isSimulatingExpired)
     : [];
+
+  const handleActionClick = (actionId: string) => {
+    if (actionId === "create") {
+      setIsCreateModalOpen(true);
+    }
+  };
 
   const actionSlot = (
     <div className="flex flex-wrap items-center gap-2">
@@ -56,33 +65,44 @@ export default function Home() {
         </div>
       )}
 
-      {availableActions.map((action) => (
-        <button
-          key={action.id}
-          type="button"
-          disabled
-          title={`${action.fullName} — ${action.description} (Pendiente de integración on-chain)`}
-          className={`px-3 py-1.5 rounded-lg font-mono text-xs font-semibold shadow-2xs flex items-center gap-1.5 border opacity-60 cursor-not-allowed ${
-            action.variant === "danger"
-              ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300"
-              : action.variant === "secondary"
-                ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
-                : "border-teal-600/50 bg-teal-600/15 text-teal-800 dark:text-teal-200"
-          }`}
-        >
-          <span>{action.label}</span>
-          <span className="text-[10px] opacity-75 font-normal">
-            [Pendiente on-chain]
-          </span>
-        </button>
-      ))}
+      {availableActions.map((action) => {
+        const isInteractive = action.id === "create";
+
+        return (
+          <button
+            key={action.id}
+            type="button"
+            disabled={!isInteractive}
+            onClick={() => handleActionClick(action.id)}
+            title={
+              isInteractive
+                ? `${action.fullName} — ${action.description}`
+                : `${action.fullName} — ${action.description} (Pendiente de integración on-chain)`
+            }
+            className={`px-3 py-1.5 rounded-lg font-mono text-xs font-semibold shadow-2xs flex items-center gap-1.5 border transition-all ${
+              isInteractive
+                ? "border-teal-600 bg-teal-600 text-white hover:bg-teal-700 cursor-pointer opacity-100"
+                : action.variant === "danger"
+                  ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300 opacity-60 cursor-not-allowed"
+                  : action.variant === "secondary"
+                    ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 opacity-60 cursor-not-allowed"
+                    : "border-teal-600/50 bg-teal-600/15 text-teal-800 dark:text-teal-200 opacity-60 cursor-not-allowed"
+            }`}
+          >
+            <span>{action.label}</span>
+            <span className="text-[10px] opacity-75 font-normal">
+              {isInteractive ? "✦" : "[Pendiente on-chain]"}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 
   const bannerSlot = (
     <div
       role="status"
-      className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3 text-xs font-mono"
+      className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono"
     >
       <div className="flex items-center gap-2">
         <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
@@ -93,14 +113,28 @@ export default function Home() {
           — Visualización de interfaz para desarrollo. Lectura y mutaciones reales de contrato pendientes de RPC.
         </span>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 shrink-0">
+        {/* Simular Vencimiento Toggle */}
+        <label className="flex items-center gap-1.5 cursor-pointer text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 hover:border-amber-500 rounded px-2 py-0.5 select-none transition-colors">
+          <input
+            type="checkbox"
+            checked={isSimulatingExpired}
+            onChange={(e) => setIsSimulatingExpired(e.target.checked)}
+            className="rounded border-amber-500/50 text-teal-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+          />
+          <span className="font-bold text-amber-900 dark:text-amber-200">
+            Simular Vencimiento
+          </span>
+        </label>
+
         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300">
           DEV PREVIEW
         </span>
+
         <select
           value={activeScenario}
           onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
-          className="text-[11px] bg-white/70 dark:bg-neutral-900/70 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded px-1.5 py-0.5 font-mono cursor-pointer"
+          className="text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded px-1.5 py-0.5 font-mono cursor-pointer"
           title="Escenario de desarrollo para previsualizar estados"
           aria-label="Escenario de desarrollo"
         >
@@ -116,18 +150,15 @@ export default function Home() {
 
   return (
     <div className="min-h-screen font-sans antialiased selection:bg-teal-500/20">
-      {/* Top Navbar (Pinned with progressive fade mask layer - zero hard cutoffs) */}
+      {/* Top Navbar */}
       <header className="sticky top-0 z-30 pointer-events-none">
-        {/* Progressive backdrop blur and cubic fade mask */}
         <div
           aria-hidden="true"
           className="absolute inset-x-0 top-0 h-24 pointer-events-none backdrop-blur-md bg-white/85 dark:bg-neutral-900/85 header-fade-mask"
         />
 
-        {/* Header interactive content */}
         <div className="pointer-events-auto relative z-10 max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* Official CanguPay Brand Logo (transparent vector) */}
             <CanguPayLogo className="h-7 sm:h-8 w-auto" />
             <span className="hidden sm:inline-block text-neutral-300 dark:text-neutral-700 font-light">
               |
@@ -152,7 +183,6 @@ export default function Home() {
             <WalletConnection />
             <ThemeSwitcher />
 
-            {/* Technical Network Indicator with NetworkIcon */}
             <div
               className={`flex items-center font-mono text-xs border rounded-lg overflow-hidden shadow-2xs ${
                 !isFreighterInstalled
@@ -191,7 +221,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Content: Pure Production UI */}
+      {/* Main Content */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         <div className="bg-white/95 dark:bg-neutral-900/85 backdrop-blur-xs border border-neutral-200/80 dark:border-neutral-800/80 rounded-2xl shadow-xs">
           <EscrowDetails
@@ -201,9 +231,22 @@ export default function Home() {
             onRefresh={handleRefresh}
             actionSlot={actionSlot}
             bannerSlot={bannerSlot}
+            viewerRole={derivedRole}
+            canFinalize={isSimulatingExpired}
+            onCreateEscrow={() => setIsCreateModalOpen(true)}
           />
         </div>
       </main>
+
+      {/* Create Escrow Modal */}
+      <CreateEscrowModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        buyerAddress={address}
+        onCreated={() => {
+          setActiveScenario("CREATED");
+        }}
+      />
     </div>
   );
 }

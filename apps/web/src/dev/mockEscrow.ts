@@ -35,6 +35,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       label: "Fondeo Requerido por el Comprador",
       timestamp: BASE_LEDGER_TIME + 86400,
     },
+    fallbackOutcome: "SPLIT",
+    fallbackSplitBps: 5000,
     hashes: {},
   },
   FUNDED: {
@@ -54,6 +56,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       label: "Envío de Evidencia Documental (Proveedor)",
       timestamp: BASE_LEDGER_TIME + 14400,
     },
+    fallbackOutcome: "SPLIT",
+    fallbackSplitBps: 5000,
     hashes: {},
   },
   EVIDENCE_SUBMITTED: {
@@ -73,6 +77,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       label: "Atestación del Motor (Engine)",
       timestamp: BASE_LEDGER_TIME + 7200,
     },
+    fallbackOutcome: "SPLIT",
+    fallbackSplitBps: 5000,
     hashes: {
       evidenceBundleHash: "0x7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",
     },
@@ -94,6 +100,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       label: "Ventana de Objeción del Comprador",
       timestamp: BASE_LEDGER_TIME + 7200,
     },
+    fallbackOutcome: "SPLIT",
+    fallbackSplitBps: 5000,
     hashes: {
       evidenceBundleHash: "0x3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a",
       reportHash: "0x9876543210abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -116,6 +124,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       label: "Ventana de Corrección del Proveedor (1 intento)",
       timestamp: BASE_LEDGER_TIME + 7200,
     },
+    fallbackOutcome: "SPLIT",
+    fallbackSplitBps: 5000,
     hashes: {
       evidenceBundleHash: "0x5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b",
       reportHash: "0x1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -138,6 +148,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       label: "Resolución del Árbitro Neutral (Resolver)",
       timestamp: BASE_LEDGER_TIME + 28800,
     },
+    fallbackOutcome: "SPLIT",
+    fallbackSplitBps: 5000,
     hashes: {
       evidenceBundleHash: "0x11223344556677889900aabbccddeeff0011223344556677889900aabbccddee",
       reportHash: "0xaabbccddeeff0011223344556677889900aabbccddeeff001122334455667788",
@@ -157,6 +169,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       engine: "GENGINE1V3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z1V3M",
       resolver: "GRESOLVER9P0R1S2T3U4V5W6X7Y8Z9A0B1C2D9P0R",
     },
+    fallbackOutcome: "RELEASE",
+    fallbackSplitBps: 10000,
     hashes: {
       evidenceBundleHash: "0x44556677889900aabbccddeeff0011223344556677889900aabbccddeeff0011",
       reportHash: "0x223344556677889900aabbccddeeff0011223344556677889900aabbccddeeff",
@@ -174,7 +188,13 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       engine: "GENGINE1V3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z1V3M",
       resolver: "GRESOLVER9P0R1S2T3U4V5W6X7Y8Z9A0B1C2D9P0R",
     },
-    hashes: {},
+    fallbackOutcome: "REFUND",
+    fallbackSplitBps: 0,
+    hashes: {
+      evidenceBundleHash: "0x44556677889900aabbccddeeff0011223344556677889900aabbccddeeff0011",
+      reportHash: "0x223344556677889900aabbccddeeff0011223344556677889900aabbccddeeff",
+      reasonHash: "0xccddeeff0011223344556677889900aabbccddeeff0011223344556677889900",
+    },
   },
   SPLIT: {
     operationId: "CANGU-OP-2026-008",
@@ -188,7 +208,14 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       engine: "GENGINE1V3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z1V3M",
       resolver: "GRESOLVER9P0R1S2T3U4V5W6X7Y8Z9A0B1C2D9P0R",
     },
-    hashes: {},
+    fallbackOutcome: "SPLIT",
+    fallbackSplitBps: 5000,
+    hashes: {
+      evidenceBundleHash: "0x44556677889900aabbccddeeff0011223344556677889900aabbccddeeff0011",
+      reportHash: "0x223344556677889900aabbccddeeff0011223344556677889900aabbccddeeff",
+      reasonHash: "0xccddeeff0011223344556677889900aabbccddeeff0011223344556677889900",
+      disputeEvidenceHash: "0xeeff0011223344556677889900aabbccddeeff0011223344556677889900aabb",
+    },
   },
   CANCELLED: {
     operationId: "CANGU-OP-2026-009",
@@ -202,6 +229,8 @@ export const mockEscrows: Record<EscrowStatus, EscrowDetailsData> = {
       engine: "GENGINE1V3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z1V3M",
       resolver: "GRESOLVER9P0R1S2T3U4V5W6X7Y8Z9A0B1C2D9P0R",
     },
+    fallbackOutcome: "REFUND",
+    fallbackSplitBps: 0,
     hashes: {},
   },
 };

@@ -41,6 +41,8 @@ export interface EscrowHashes {
   disputeEvidenceHash?: string;
 }
 
+export type FallbackOutcome = "RELEASE" | "REFUND" | "SPLIT";
+
 export interface EscrowDetailsData {
   operationId: string;
   contractId?: string;
@@ -50,6 +52,8 @@ export interface EscrowDetailsData {
   parties: EscrowParties;
   activeDeadline?: EscrowDeadline;
   hashes: EscrowHashes;
+  fallbackOutcome?: FallbackOutcome;
+  fallbackSplitBps?: number;
   transactionHash?: string;
   explorerBaseUrl?: string; // Default: https://stellar.expert/explorer/testnet
   updatedAtLedger?: number;
@@ -62,6 +66,9 @@ export interface EscrowDetailsProps {
   onRefresh?: () => void;
   actionSlot?: React.ReactNode;
   bannerSlot?: React.ReactNode;
+  viewerRole?: UserRole | null;
+  canFinalize?: boolean;
+  onCreateEscrow?: () => void;
 }
 
 /**
@@ -163,6 +170,14 @@ export function getAvailableActions(
 
   if (role === "buyer") {
     if (status === "CREATED") {
+      actions.push({
+        id: "create",
+        label: "Crear Escrow",
+        fullName: "Crear Nuevo Escrow Comercial",
+        variant: "secondary",
+        expectedOutcome: "CREATED",
+        description: "Configura e inicializa un nuevo contrato de custodia comercial.",
+      });
       actions.push({
         id: "fund",
         label: "Fondear Depósito",
