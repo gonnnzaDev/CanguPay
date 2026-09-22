@@ -139,6 +139,8 @@ export interface EscrowAction {
   variant: "primary" | "secondary" | "danger";
   expectedOutcome: EscrowStatus;
   description: string;
+  labelKey?: string;
+  descKey?: string;
 }
 
 /**
@@ -162,9 +164,16 @@ export interface EscrowAction {
 export function getAvailableActions(
   role: UserRole | null,
   status: EscrowStatus,
-  canFinalize: boolean = false
+  canFinalize: boolean = false,
+  t?: (key: string, params?: Record<string, string | number>) => string
 ): EscrowAction[] {
   if (isTerminalStatus(status)) return [];
+
+  const tr = (key: string, fallback: string) => {
+    if (!t) return fallback;
+    const res = t(key);
+    return res && res !== key ? res : fallback;
+  };
 
   const actions: EscrowAction[] = [];
 
@@ -172,99 +181,121 @@ export function getAvailableActions(
     if (status === "CREATED") {
       actions.push({
         id: "create",
-        label: "Crear Escrow",
+        labelKey: "actions.create",
+        descKey: "actions.create_desc",
+        label: tr("actions.create", "Crear Escrow"),
         fullName: "Crear Nuevo Escrow Comercial",
         variant: "secondary",
         expectedOutcome: "CREATED",
-        description: "Configura e inicializa un nuevo contrato de custodia comercial.",
+        description: tr("actions.create_desc", "Configura e inicializa un nuevo contrato de custodia comercial."),
       });
       actions.push({
         id: "fund",
-        label: "Fondear Depósito",
+        labelKey: "actions.fund",
+        descKey: "actions.fund_desc",
+        label: tr("actions.fund", "Fondear Depósito"),
         fullName: "Fondear Depósito en Custodia",
         variant: "primary",
         expectedOutcome: "FUNDED",
-        description: "Transfiere los fondos de compra al contrato inteligente.",
+        description: tr("actions.fund_desc", "Transfiere los fondos de compra al contrato inteligente."),
       });
       actions.push({
         id: "cancel",
-        label: "Cancelar Escrow",
+        labelKey: "actions.cancel",
+        descKey: "actions.cancel_desc",
+        label: tr("actions.cancel", "Cancelar Escrow"),
         fullName: "Cancelar Depósito Previo a Fondeo",
         variant: "danger",
         expectedOutcome: "CANCELLED",
-        description: "Cancela la operación antes de que los fondos sean bloqueados.",
+        description: tr("actions.cancel_desc", "Cancela la operación antes de que los fondos sean bloqueados."),
       });
     } else if (status === "ATTESTED_PASS") {
       actions.push({
         id: "approve",
-        label: "Aprobar Liberación",
+        labelKey: "actions.approve",
+        descKey: "actions.approve_desc",
+        label: tr("actions.approve", "Aprobar Liberación"),
         fullName: "Aprobar Liberación Definitiva",
         variant: "primary",
         expectedOutcome: "RELEASED",
-        description: "Acepta el resultado satisfactorio del motor y libera los fondos al proveedor.",
+        description: tr("actions.approve_desc", "Acepta el resultado satisfactorio del motor y libera los fondos al proveedor."),
       });
       actions.push({
         id: "dispute_pass",
-        label: "Disputar Atestación",
+        labelKey: "actions.dispute",
+        descKey: "actions.dispute_desc",
+        label: tr("actions.dispute", "Disputar Atestación"),
         fullName: "Objetar y Abrir Disputa",
         variant: "danger",
         expectedOutcome: "DISPUTED",
-        description: "Objeta la atestación y eleva la operación al árbitro (resolver).",
+        description: tr("actions.dispute_desc", "Objeta la atestación y eleva la operación al árbitro (resolver)."),
       });
     }
   } else if (role === "supplier") {
     if (status === "FUNDED") {
       actions.push({
         id: "submit_evidence",
-        label: "Presentar Evidencia",
+        labelKey: "actions.submit_evidence",
+        descKey: "actions.submit_evidence_desc",
+        label: tr("actions.submit_evidence", "Presentar Evidencia"),
         fullName: "Presentar Lote Documental (Evidence)",
         variant: "primary",
         expectedOutcome: "EVIDENCE_SUBMITTED",
-        description: "Registra el hash del lote documental de entrega para evaluación del motor.",
+        description: tr("actions.submit_evidence_desc", "Registra el hash del lote documental de entrega para evaluación del motor."),
       });
     } else if (status === "ATTESTED_FAIL") {
       actions.push({
         id: "submit_correction",
-        label: "Presentar Corrección",
+        labelKey: "actions.correct_evidence",
+        descKey: "actions.correct_evidence_desc",
+        label: tr("actions.correct_evidence", "Presentar Corrección"),
         fullName: "Presentar Corrección Técnica",
         variant: "primary",
         expectedOutcome: "EVIDENCE_SUBMITTED",
-        description: "Envía un nuevo lote documental corregido (1 intento permitido).",
+        description: tr("actions.correct_evidence_desc", "Envía un nuevo lote documental corregido (1 intento permitido)."),
       });
       actions.push({
         id: "dispute_fail",
-        label: "Disputar Dictamen",
+        labelKey: "actions.dispute",
+        descKey: "actions.dispute_desc",
+        label: tr("actions.dispute", "Disputar Dictamen"),
         fullName: "Elevar Disputa al Árbitro",
         variant: "danger",
         expectedOutcome: "DISPUTED",
-        description: "Objeta la observación del motor y solicita arbitraje neutral.",
+        description: tr("actions.dispute_desc", "Objeta la observación del motor y solicita arbitraje neutral."),
       });
     }
   } else if (role === "resolver") {
     if (status === "DISPUTED") {
       actions.push({
         id: "resolve_release",
-        label: "Liberar a Proveedor",
+        labelKey: "actions.release",
+        descKey: "actions.release_desc",
+        label: tr("actions.release", "Liberar a Proveedor"),
         fullName: "Dictamen Arbitral: Liberación (Release)",
         variant: "primary",
         expectedOutcome: "RELEASED",
-        description: "Falla a favor del proveedor, liberando la totalidad de los fondos.",
+        description: tr("actions.release_desc", "Falla a favor del proveedor, liberando la totalidad de los fondos."),
       });
       actions.push({
         id: "resolve_refund",
-        label: "Reembolsar a Comprador",
+        labelKey: "actions.refund",
+        descKey: "actions.refund_desc",
+        label: tr("actions.refund", "Reembolsar a Comprador"),
         fullName: "Dictamen Arbitral: Reembolso (Refund)",
         variant: "danger",
         expectedOutcome: "REFUNDED",
-        description: "Falla a favor del comprador, devolviendo los fondos en custodia.",
+        description: tr("actions.refund_desc", "Falla a favor del comprador, devolviendo los fondos en custodia."),
       });
       actions.push({
         id: "resolve_split",
-        label: "Dividir Fondos (Split)",
+        labelKey: "actions.split",
+        descKey: "actions.split_desc",
+        label: tr("actions.split", "Dividir Fondos (Split)"),
         fullName: "Dictamen Arbitral: División Equitativa (Split)",
         variant: "secondary",
         expectedOutcome: "SPLIT",
-        description: "Resuelve una liquidación porcentual según los acuerdos comerciales.",
+        description: tr("actions.split_desc", "Resuelve una liquidación porcentual según los acuerdos comerciales."),
       });
     }
   }
@@ -274,11 +305,13 @@ export function getAvailableActions(
   if (canFinalize) {
     actions.push({
       id: "finalize",
-      label: "Ejecutar Finalize",
+      labelKey: "actions.finalize",
+      descKey: "actions.finalize_desc",
+      label: tr("actions.finalize", "Ejecutar Finalize"),
       fullName: "Ejecución Vencimiento (Finalize)",
       variant: "secondary",
       expectedOutcome: "RELEASED",
-      description: "Acción permisionada por expiración del plazo contractual en ledger.",
+      description: tr("actions.finalize_desc", "Acción permisionada por expiración del plazo contractual en ledger."),
     });
   }
 

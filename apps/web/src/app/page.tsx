@@ -7,8 +7,10 @@ import {
   RoleIcon,
 } from "@/components/icons";
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
+import { LanguageSwitcher } from "@/components/theme/LanguageSwitcher";
 import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
+import { useLanguage } from "@/providers/LanguageProvider";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
 import { CreateEscrowModal } from "@/components/escrow/CreateEscrowModal";
 import {
@@ -20,6 +22,7 @@ import {
 import { mockEscrows } from "@/dev/mockEscrow";
 
 export default function Home() {
+  const { t } = useLanguage();
   const [activeScenario, setActiveScenario] = useState<EscrowStatus>("FUNDED");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -47,7 +50,7 @@ export default function Home() {
   const currentData = isEmpty ? null : mockEscrows[activeScenario] || null;
   const derivedRole = deriveWalletRole(address, currentData?.parties);
   const availableActions = currentData
-    ? getAvailableActions(derivedRole, currentData.status, isSimulatingExpired)
+    ? getAvailableActions(derivedRole, currentData.status, isSimulatingExpired, t)
     : [];
 
   const handleActionClick = (actionId: string) => {
@@ -61,12 +64,14 @@ export default function Home() {
       {currentData?.status === "EVIDENCE_SUBMITTED" && (
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-mono text-[11px] font-medium shadow-2xs">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-          <span>Esperando atestación del motor (Engine)</span>
+          <span>{t("alerts.waiting_engine")}</span>
         </div>
       )}
 
       {availableActions.map((action) => {
         const isInteractive = action.id === "create";
+        const actionLabel = action.labelKey ? t(action.labelKey) : action.label;
+        const actionDesc = action.descKey ? t(action.descKey) : action.description;
 
         return (
           <button
@@ -76,8 +81,8 @@ export default function Home() {
             onClick={() => handleActionClick(action.id)}
             title={
               isInteractive
-                ? `${action.fullName} — ${action.description}`
-                : `${action.fullName} — ${action.description} (Pendiente de integración on-chain)`
+                ? `${action.fullName} — ${actionDesc}`
+                : `${action.fullName} — ${actionDesc} (${t("common.pending_onchain")})`
             }
             className={`px-3 py-1.5 rounded-lg font-mono text-xs font-semibold shadow-2xs flex items-center gap-1.5 border transition-all ${
               isInteractive
@@ -89,9 +94,9 @@ export default function Home() {
                     : "border-teal-600/50 bg-teal-600/15 text-teal-800 dark:text-teal-200 opacity-60 cursor-not-allowed"
             }`}
           >
-            <span>{action.label}</span>
+            <span>{actionLabel}</span>
             <span className="text-[10px] opacity-75 font-normal">
-              {isInteractive ? "✦" : "[Pendiente on-chain]"}
+              {isInteractive ? "✦" : `[${t("common.pending_onchain")}]`}
             </span>
           </button>
         );
@@ -107,7 +112,7 @@ export default function Home() {
       <div className="flex items-center gap-2">
         <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
         <span className="font-bold tracking-wider uppercase shrink-0">
-          DATOS MOCK · SIN LECTURA RPC
+          {t("alerts.mock_data_badge")}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -120,12 +125,12 @@ export default function Home() {
             className="rounded border-amber-500/50 text-teal-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
           />
           <span className="font-bold text-amber-900 dark:text-amber-200">
-            Simular Vencimiento
+            {t("alerts.simulate_expiry")}
           </span>
         </label>
 
         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300">
-          DEV PREVIEW
+          {t("alerts.dev_preview")}
         </span>
 
         <select
@@ -164,11 +169,11 @@ export default function Home() {
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200/80 dark:border-neutral-800/80 bg-neutral-100/70 dark:bg-neutral-900/70 text-neutral-700 dark:text-neutral-300 font-mono text-[11px] font-bold tracking-wider uppercase shadow-2xs"
               title={
                 derivedRole
-                  ? `Rol detectado en el contrato: ${derivedRole.toUpperCase()}`
-                  : "Sin wallet conectada para determinar rol"
+                  ? `${t("header.role")}: ${derivedRole.toUpperCase()}`
+                  : t("header.no_wallet")
               }
             >
-              <span>ROL: {derivedRole ? derivedRole.toUpperCase() : "—"}</span>
+              <span>{t("header.role")}: {derivedRole ? derivedRole.toUpperCase() : "—"}</span>
               {derivedRole && (
                 <RoleIcon role={derivedRole} size={13} className="text-teal-600 dark:text-teal-400" />
               )}
@@ -179,6 +184,7 @@ export default function Home() {
           <div className="flex items-center gap-2 sm:gap-3">
             <WalletConnection />
             <ThemeSwitcher />
+            <LanguageSwitcher />
 
             <div
               className={`flex items-center font-mono text-xs border rounded-lg overflow-hidden shadow-2xs ${
@@ -190,15 +196,15 @@ export default function Home() {
               }`}
               title={
                 !isFreighterInstalled
-                  ? "Freighter no detectado"
+                  ? t("header.not_detected")
                   : isExactTestnet
-                    ? `Red Stellar validada: ${network} (${networkPassphrase || ""})`
-                    : `Red bloqueada: ${network} (requiere Testnet oficial)`
+                    ? `${t("header.network")}: ${network} (${networkPassphrase || ""})`
+                    : `${t("header.blocked")}: ${network}`
               }
             >
               <span
                 className="px-2 py-1.5 bg-neutral-200/50 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-800 flex items-center justify-center"
-                aria-label="Red Stellar"
+                aria-label={t("header.network")}
               >
                 <NetworkIcon size={13} />
               </span>
@@ -211,7 +217,11 @@ export default function Home() {
                       : "text-red-600 dark:text-red-400 animate-pulse"
                 }`}
               >
-                {!isFreighterInstalled ? "NO DETECTADO" : isExactTestnet ? "TESTNET" : network}
+                {!isFreighterInstalled
+                  ? t("header.not_detected").toUpperCase()
+                  : isExactTestnet
+                    ? t("header.testnet").toUpperCase()
+                    : t("header.blocked").toUpperCase()}
               </span>
             </div>
           </div>
@@ -224,7 +234,7 @@ export default function Home() {
           <EscrowDetails
             data={currentData}
             isLoading={isLoading}
-            error={hasError ? "Fallo de conexión al nodo RPC de Stellar Testnet (TIMEOUT)" : null}
+            error={hasError ? t("alerts.contract_error") : null}
             onRefresh={handleRefresh}
             actionSlot={actionSlot}
             bannerSlot={bannerSlot}

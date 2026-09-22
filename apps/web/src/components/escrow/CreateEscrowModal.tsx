@@ -8,6 +8,7 @@ import {
   CheckIcon,
 } from "@/components/icons";
 import { FallbackOutcome } from "@/types/escrow";
+import { useLanguage } from "@/providers/LanguageProvider";
 
 interface CreateEscrowModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
   buyerAddress,
   onCreated,
 }) => {
+  const { t } = useLanguage();
   const defaultBuyer = buyerAddress || "GBUYER4X9Z2K1L3M4N5O6P7Q8R9S0T1U2V3W4X9Z";
   const [buyerInput, setBuyerInput] = useState<string | null>(null);
   const buyer = buyerInput ?? defaultBuyer;
@@ -149,14 +151,14 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                 id="create-escrow-title"
                 className="text-base font-bold font-mono tracking-tight text-neutral-950 dark:text-white"
               >
-                Crear Nuevo Escrow Comercial
+                {t("create_modal.title")}
               </h2>
             </div>
           </div>
           <button
             onClick={handleModalClose}
             className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-            aria-label="Cerrar modal"
+            aria-label={t("common.close")}
           >
             <CloseIcon size={16} />
           </button>
@@ -170,10 +172,10 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                 <CheckIcon size={24} />
               </div>
               <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                Parámetros de Escrow Validados
+                {t("create_modal.success_title")}
               </h3>
               <p className="text-xs text-neutral-500 max-w-md mx-auto">
-                La invocación on-chain <code className="text-teal-600 dark:text-teal-400">initialize()</code> está lista para ejecutarse cuando se active la conexión RPC de Soroban.
+                {t("create_modal.success_desc")}
               </p>
               <div className="pt-4">
                 <button
@@ -181,7 +183,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                   onClick={handleModalClose}
                   className="px-4 py-2 rounded-lg bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 font-semibold cursor-pointer"
                 >
-                  Entendido / Volver al Panel
+                  {t("create_modal.dismiss_btn")}
                 </button>
               </div>
             </div>
@@ -205,9 +207,9 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
               {/* Field: Buyer */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
-                  Comprador (Buyer Address)
+                  {t("create_modal.buyer_label")}
                   <span className="text-teal-600 dark:text-teal-400 ml-1.5 font-normal">
-                    {buyerAddress && buyer === buyerAddress ? "(Tu wallet conectada)" : ""}
+                    {buyerAddress && buyer === buyerAddress ? ` ${t("create_modal.connected_wallet_hint")}` : ""}
                   </span>
                 </label>
                 <input
@@ -222,7 +224,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
               {/* Field: Supplier */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
-                  Proveedor (Supplier Address)
+                  {t("create_modal.supplier_label")}
                 </label>
                 <input
                   type="text"
@@ -237,7 +239,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
-                    Árbitro (Resolver / Arbiter)
+                    {t("create_modal.resolver_label")}
                   </label>
                   <input
                     type="text"
@@ -249,7 +251,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
-                    Motor (Attestation Engine)
+                    {t("create_modal.engine_label")}
                   </label>
                   <input
                     type="text"
@@ -265,7 +267,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
-                    Contrato del Token (SAC / Asset)
+                    {t("create_modal.token_label")}
                   </label>
                   <input
                     type="text"
@@ -277,7 +279,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300">
-                    Monto en CPUSD
+                    {t("create_modal.amount_label")}
                   </label>
                   <input
                     type="text"
@@ -297,7 +299,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] text-neutral-500 mb-1">
-                      Destino de Liquidación Automática
+                      {t("create_modal.fallback_outcome_label")}
                     </label>
                     <select
                       value={fallbackOutcome}
@@ -313,7 +315,7 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                   {fallbackOutcome === "SPLIT" && (
                     <div>
                       <label className="block text-[10px] text-neutral-500 mb-1">
-                        Puntos Básicos División (BPS: {fallbackSplitBps / 100}%)
+                        {t("create_modal.fallback_split_label")} ({(fallbackSplitBps / 100).toFixed(0)}%)
                       </label>
                       <input
                         type="number"
@@ -343,17 +345,14 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
                   onClick={handleModalClose}
                   className="px-3.5 py-2 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                 >
-                  Cancelar
+                  {t("create_modal.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={!isValid}
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
                 >
-                  <span>Inicializar Escrow</span>
-                  <span className="text-[10px] opacity-75 font-normal">
-                    [Pendiente on-chain]
-                  </span>
+                  <span>{t("create_modal.submit_btn")}</span>
                 </button>
               </div>
             </>
