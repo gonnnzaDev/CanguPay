@@ -990,7 +990,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         </div>
 
         {/* Compact Minimized Participant Chips (Expands on Hover / Keyboard Focus) */}
-        <div className="flex flex-wrap items-center gap-2.5 mb-4">
+        <div className="flex flex-wrap items-center justify-center gap-2.5 mb-4">
           {[
             {
               key: "buyer",
