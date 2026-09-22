@@ -19,48 +19,11 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-}
-
-/* Custom spring easing utility */
-.ease-spring {
-  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Subtle breath animations for active status and progress nodes */
-@keyframes breath {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.2);
-  }
-  50% {
-    transform: scale(1.04);
-    box-shadow: 0 0 0 6px rgba(20, 184, 166, 0.32);
-  }
-}
-
-@keyframes breath-rose {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.2);
-  }
-  50% {
-    transform: scale(1.04);
-    box-shadow: 0 0 0 6px rgba(244, 63, 94, 0.32);
-  }
-}
-
-.animate-breath {
-  animation: breath 2.4s ease-in-out infinite;
-}
-
-.animate-breath-rose {
-  animation: breath-rose 2.4s ease-in-out infinite;
 }
 
 /* Hide native scrollbar globally (handled by FloatingScrollbar component) */
@@ -95,16 +58,6 @@ html {
     rgba(0, 0, 0, 0.15) 92%,
     rgba(0, 0, 0, 0) 100%
   );
-}
-
-/* Global prefers-reduced-motion guard */
-@media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
 }
 
 

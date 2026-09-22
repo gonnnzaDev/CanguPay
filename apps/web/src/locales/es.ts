@@ -12,8 +12,6 @@ export const es = {
     save: "Guardar",
     pending_onchain: "Pendiente on-chain",
     you: "TÚ",
-    expand: "Expandir",
-    collapse: "Colapsar",
   },
   header: {
     role: "Rol",
@@ -88,13 +86,6 @@ export const es = {
     engine: "Motor de Atestación (Engine)",
     resolver: "Árbitro Neutral (Resolver)",
     none: "Sin acción pendiente",
-    active_turn_action: {
-      supplier: "Proveedor · Presentación de lote documental requerida",
-      buyer: "Comprador · Aprobación de entrega o disputa",
-      engine: "Motor de Atestación · Evaluación de evidencia en curso",
-      resolver: "Árbitro Neutral · Arbitraje y dictamen de liquidación",
-      none: "Operación finalizada · Sin acción pendiente",
-    },
   },
   metrics: {
     funds_under_custody: "FONDOS BAJO CUSTODIA",
@@ -103,7 +94,6 @@ export const es = {
     deadline_label: "PLAZO LÍMITE: {label}",
     syncing_clock: "Sincronizando reloj con ledger...",
     timestamp_limit: "Timestamp Límite:",
-    remaining: "restantes",
   },
   participants: {
     title: "PARTICIPANTES DE LA OPERACIÓN",
@@ -169,11 +159,9 @@ export const es = {
     },
     observer: {
       banner: "Modo Observador · Solo lectura pública",
-      banner_short: "Modo Observador · Solo lectura",
     },
     disconnected: {
       banner: "Conecta tu wallet Freighter para interactuar con el contrato.",
-      prompt: "Conecta tu wallet Freighter para operar",
     },
   },
   create_modal: {
@@ -193,16 +181,8 @@ export const es = {
     success_desc: "La invocación on-chain initialize() está lista para ejecutarse cuando se active la conexión RPC de Soroban.",
     dismiss_btn: "Entendido / Volver al Panel",
   },
-  technical_details: {
-    title: "Detalles técnicos",
-    subtitle: "4 hashes criptográficos, contrato, ledger",
-    contract_id: "ID del Contrato",
-    ledger_timestamp: "Timestamp de Ledger",
-    not_recorded: "No registrado",
-  },
   alerts: {
     finalize_expired: "Plazo límite alcanzado · Liquidación por fallback ({outcome}) habilitada.",
-    deadline_expired_badge: "Plazo límite alcanzado · Liquidación por fallback habilitada",
     universal_permission: "PERMISIÓN UNIVERSAL",
     mock_data_badge: "DATOS MOCK · SIN LECTURA RPC",
     simulate_expiry: "Simular Vencimiento",

@@ -40,7 +40,7 @@ export function LanguageSwitcher() {
             title={option.ariaLabel}
             onClick={() => setLanguage(option.value)}
             onKeyDown={(e) => handleKeyDown(e, idx)}
-            className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all duration-150 hover:scale-105 active:scale-95 cursor-pointer focus-visible:ring-2 focus-visible:ring-teal-500/50 focus-visible:outline-none ${
+            className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all duration-200 cursor-pointer ${
               isActive
                 ? "bg-white dark:bg-neutral-800 text-neutral-950 dark:text-neutral-50 shadow-xs"
                 : "text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50"
