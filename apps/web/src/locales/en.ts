@@ -14,6 +14,8 @@ export const en: typeof es = {
     save: "Save",
     pending_onchain: "Pending on-chain",
     you: "YOU",
+    expand: "Expand",
+    collapse: "Collapse",
   },
   header: {
     role: "Role",
@@ -88,6 +90,13 @@ export const en: typeof es = {
     engine: "Attestation Engine",
     resolver: "Neutral Arbiter (Resolver)",
     none: "No pending action",
+    active_turn_action: {
+      supplier: "Supplier · Document bundle submission required",
+      buyer: "Buyer · Delivery approval or dispute",
+      engine: "Attestation Engine · Evidence evaluation in progress",
+      resolver: "Neutral Arbiter · Arbitration and settlement ruling",
+      none: "Operation finalized · No pending action",
+    },
   },
   metrics: {
     funds_under_custody: "FUNDS UNDER CUSTODY",
@@ -96,6 +105,7 @@ export const en: typeof es = {
     deadline_label: "DEADLINE: {label}",
     syncing_clock: "Syncing clock with ledger...",
     timestamp_limit: "Limit Timestamp:",
+    remaining: "remaining",
   },
   participants: {
     title: "OPERATION PARTICIPANTS",
@@ -161,9 +171,11 @@ export const en: typeof es = {
     },
     observer: {
       banner: "Observer Mode · Public read-only",
+      banner_short: "Observer Mode · Read-only",
     },
     disconnected: {
       banner: "Connect your Freighter wallet to interact with the contract.",
+      prompt: "Connect your Freighter wallet to operate",
     },
   },
   create_modal: {
@@ -183,8 +195,16 @@ export const en: typeof es = {
     success_desc: "On-chain initialize() invocation is ready to execute once Soroban RPC connection is active.",
     dismiss_btn: "Understood / Return to Panel",
   },
+  technical_details: {
+    title: "Technical details",
+    subtitle: "4 cryptographic hashes, contract, ledger",
+    contract_id: "Contract ID",
+    ledger_timestamp: "Ledger Timestamp",
+    not_recorded: "Not recorded",
+  },
   alerts: {
     finalize_expired: "Deadline reached · Fallback settlement ({outcome}) enabled.",
+    deadline_expired_badge: "Deadline reached · Fallback settlement enabled",
     universal_permission: "UNIVERSAL PERMISSION",
     mock_data_badge: "MOCK DATA · NO RPC READ",
     simulate_expiry: "Simulate Expiry",

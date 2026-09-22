@@ -5,6 +5,7 @@ import {
   CanguPayLogo,
   NetworkIcon,
   RoleIcon,
+  CloseIcon,
 } from "@/components/icons";
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { LanguageSwitcher } from "@/components/theme/LanguageSwitcher";
@@ -29,6 +30,7 @@ export default function Home() {
   const [isEmpty, setIsEmpty] = useState<boolean>(false);
   const [isSimulatingExpired, setIsSimulatingExpired] = useState<boolean>(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
+  const [isDevToolbarOpen, setIsDevToolbarOpen] = useState<boolean>(false);
 
   const {
     address,
@@ -101,52 +103,6 @@ export default function Home() {
           </button>
         );
       })}
-    </div>
-  );
-
-  const bannerSlot = (
-    <div
-      role="status"
-      className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono"
-    >
-      <div className="flex items-center gap-2">
-        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-        <span className="font-bold tracking-wider uppercase shrink-0">
-          {t("alerts.mock_data_badge")}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 shrink-0">
-        {/* Simular Vencimiento Toggle */}
-        <label className="flex items-center gap-1.5 cursor-pointer text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 hover:border-amber-500 rounded px-2 py-0.5 select-none transition-colors">
-          <input
-            type="checkbox"
-            checked={isSimulatingExpired}
-            onChange={(e) => setIsSimulatingExpired(e.target.checked)}
-            className="rounded border-amber-500/50 text-teal-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
-          />
-          <span className="font-bold text-amber-900 dark:text-amber-200">
-            {t("alerts.simulate_expiry")}
-          </span>
-        </label>
-
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300">
-          {t("alerts.dev_preview")}
-        </span>
-
-        <select
-          value={activeScenario}
-          onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
-          className="text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded px-1.5 py-0.5 font-mono cursor-pointer"
-          title="Escenario de desarrollo para previsualizar estados"
-          aria-label="Escenario de desarrollo"
-        >
-          {Object.keys(mockEscrows).map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
-      </div>
     </div>
   );
 
@@ -237,13 +193,82 @@ export default function Home() {
             error={hasError ? t("alerts.contract_error") : null}
             onRefresh={handleRefresh}
             actionSlot={actionSlot}
-            bannerSlot={bannerSlot}
             viewerRole={derivedRole}
             canFinalize={isSimulatingExpired}
             onCreateEscrow={() => setIsCreateModalOpen(true)}
           />
         </div>
       </main>
+
+      {/* Discreet Floating Dev Toolbar */}
+      <div className="fixed bottom-4 right-4 z-40">
+        {!isDevToolbarOpen ? (
+          <button
+            type="button"
+            onClick={() => setIsDevToolbarOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900/90 dark:bg-neutral-800/90 hover:bg-neutral-800 dark:hover:bg-neutral-700/90 text-neutral-200 border border-amber-500/30 shadow-lg backdrop-blur-md font-mono text-xs cursor-pointer transition-all duration-200 group"
+            title={t("alerts.dev_preview")}
+          >
+            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="font-semibold tracking-wider text-[11px] text-amber-300">
+              DEV · MOCK
+            </span>
+            <span className="text-[10px] text-neutral-400 font-normal">
+              [{activeScenario}]
+            </span>
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2.5 px-3.5 py-2 rounded-xl bg-neutral-900/95 dark:bg-neutral-900/95 text-neutral-100 border border-amber-500/40 shadow-2xl backdrop-blur-md font-mono text-xs">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-[10px] font-bold tracking-widest text-amber-400 uppercase">
+                {t("alerts.dev_preview")}
+              </span>
+            </div>
+
+            <div className="h-4 w-px bg-neutral-700 shrink-0" />
+
+            {/* Scenario Selector */}
+            <select
+              value={activeScenario}
+              onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
+              className="text-[11px] bg-neutral-800 border border-neutral-700 hover:border-amber-500/50 text-neutral-200 rounded-md px-2 py-1 font-mono cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
+              title="Escenario de desarrollo"
+              aria-label="Escenario de desarrollo"
+            >
+              {Object.keys(mockEscrows).map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+
+            {/* Simular Vencimiento */}
+            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700 rounded-md px-2 py-1 select-none transition-colors">
+              <input
+                type="checkbox"
+                checked={isSimulatingExpired}
+                onChange={(e) => setIsSimulatingExpired(e.target.checked)}
+                className="rounded border-neutral-600 text-teal-500 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+              />
+              <span className="text-neutral-300 font-medium text-[10px] tracking-wide">
+                {t("alerts.simulate_expiry")}
+              </span>
+            </label>
+
+            {/* Collapse button */}
+            <button
+              type="button"
+              onClick={() => setIsDevToolbarOpen(false)}
+              className="p-1 rounded text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer ml-1"
+              title={t("common.close")}
+              aria-label={t("common.close")}
+            >
+              <CloseIcon size={14} />
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Create Escrow Modal */}
       <CreateEscrowModal
