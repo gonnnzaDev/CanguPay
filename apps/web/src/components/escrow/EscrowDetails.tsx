@@ -705,16 +705,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
       {/* Parties / Roles Panel & Fallback Configuration */}
       <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs font-mono">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3.5">
+        <div className="flex items-center justify-between gap-1.5 mb-3.5">
           <div className="flex items-center gap-2">
             <ScaleIcon size={15} className="text-neutral-400" />
             <h3 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest">
               PARTICIPANTES DE LA OPERACIÓN
             </h3>
           </div>
-          <span className="text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
-            <span>FREIGHTER ACCOUNTS</span>
-            <span className="hidden sm:inline opacity-60">· Pasa el cursor para inspeccionar wallet</span>
+          <span className="text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+            FREIGHTER ACCOUNTS
           </span>
         </div>
 
@@ -856,131 +855,146 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         </div>
       </div>
 
-      {/* Cryptographic Hashes Vault */}
+      {/* Cryptographic Hashes Chips */}
       <div className="p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs font-mono">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between gap-1.5 mb-3.5">
           <div className="flex items-center gap-2">
             <HashIcon size={15} className="text-neutral-400" />
             <h3 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest">
-              BÓVEDA DE HASHES CRIPTOGRÁFICOS
+              HASHES CRIPTOGRÁFICOS
             </h3>
           </div>
-          <span className="text-[10px] text-neutral-500 uppercase tracking-widest px-2 py-0.5 rounded border border-neutral-200/60 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-900/60">
-            BytesN&lt;32&gt;
+          <span className="text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+            BYTESN&lt;32&gt;
           </span>
         </div>
 
-        <div className="space-y-2.5 text-xs">
-          {/* Evidence Bundle Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
-            <span className="text-neutral-500 font-sans text-xs">
-              Lote Documental (Evidence Bundle):
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-neutral-800 dark:text-neutral-200">
-                {truncateHash(data.hashes.evidenceBundleHash || "")}
-              </span>
-              {data.hashes.evidenceBundleHash && (
-                <button
-                  onClick={() =>
-                    handleCopy(data.hashes.evidenceBundleHash!, "evidenceHash")
-                  }
-                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-                  title="Copiar hash"
-                >
-                  {copiedKey === "evidenceHash" ? (
-                    <CheckIcon size={14} className="text-emerald-500" />
-                  ) : (
-                    <CopyIcon size={14} />
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
+        {/* Compact Minimized Hash Chips (Expands on Hover / Keyboard Focus) */}
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          {[
+            {
+              key: "evidenceHash",
+              label: "Evidencia",
+              roleDesc: "Lote Documental (Evidence Bundle)",
+              hash: data.hashes.evidenceBundleHash,
+              icon: FileTextIcon,
+              iconBg: "bg-cyan-500/10 dark:bg-cyan-500/20",
+              iconColor: "text-cyan-600 dark:text-cyan-400",
+              hoverBg: "hover:bg-cyan-50/60 dark:hover:bg-cyan-950/40",
+              hoverBorder: "hover:border-cyan-500/40 dark:hover:border-cyan-400/40 focus-within:border-cyan-500/40 dark:focus-within:border-cyan-400/40",
+            },
+            {
+              key: "reportHash",
+              label: "Dictamen",
+              roleDesc: "Dictamen del Motor (Report Hash)",
+              hash: data.hashes.reportHash,
+              icon: CpuIcon,
+              iconBg: "bg-purple-500/10 dark:bg-purple-500/20",
+              iconColor: "text-purple-600 dark:text-purple-400",
+              hoverBg: "hover:bg-purple-50/60 dark:hover:bg-purple-950/40",
+              hoverBorder: "hover:border-purple-500/40 dark:hover:border-purple-400/40 focus-within:border-purple-500/40 dark:focus-within:border-purple-400/40",
+            },
+            {
+              key: "reasonHash",
+              label: "Objeción",
+              roleDesc: "Motivo de Disputa (Reason Hash)",
+              hash: data.hashes.reasonHash,
+              icon: AlertCircleIcon,
+              iconBg: "bg-amber-500/10 dark:bg-amber-500/20",
+              iconColor: "text-amber-600 dark:text-amber-400",
+              hoverBg: "hover:bg-amber-50/60 dark:hover:bg-amber-950/40",
+              hoverBorder: "hover:border-amber-500/40 dark:hover:border-amber-400/40 focus-within:border-amber-500/40 dark:focus-within:border-amber-400/40",
+            },
+            {
+              key: "disputeEvidenceHash",
+              label: "Pruebas",
+              roleDesc: "Pruebas de Disputa (Dispute Evidence)",
+              hash: data.hashes.disputeEvidenceHash,
+              icon: ShieldLockIcon,
+              iconBg: "bg-rose-500/10 dark:bg-rose-500/20",
+              iconColor: "text-rose-600 dark:text-rose-400",
+              hoverBg: "hover:bg-rose-50/60 dark:hover:bg-rose-950/40",
+              hoverBorder: "hover:border-rose-500/40 dark:hover:border-rose-400/40 focus-within:border-rose-500/40 dark:focus-within:border-rose-400/40",
+            },
+          ].map((item) => {
+            const hasHash = Boolean(item.hash);
+            const isCopied = copiedKey === item.key;
 
-          {/* Engine Report Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
-            <span className="text-neutral-500 font-sans text-xs">
-              Dictamen del Motor (Report Hash):
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-neutral-800 dark:text-neutral-200">
-                {truncateHash(data.hashes.reportHash || "")}
-              </span>
-              {data.hashes.reportHash && (
-                <button
-                  onClick={() =>
-                    handleCopy(data.hashes.reportHash!, "reportHash")
+            return (
+              <div
+                key={item.key}
+                tabIndex={hasHash ? 0 : -1}
+                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all duration-300 ease-out select-none ${
+                  hasHash
+                    ? `border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 ${item.hoverBg} ${item.hoverBorder} hover:shadow-xs dark:hover:shadow-neutral-950/50 cursor-pointer`
+                    : "border-neutral-200/50 dark:border-neutral-800/50 bg-neutral-50/40 dark:bg-neutral-900/40 opacity-55 cursor-default"
+                }`}
+                title={hasHash ? `${item.roleDesc}: ${item.hash}` : `${item.roleDesc}: Pendiente`}
+                onClick={() => {
+                  if (hasHash && item.hash) {
+                    handleCopy(item.hash, item.key);
                   }
-                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-                  title="Copiar hash"
+                }}
+                onKeyDown={(e) => {
+                  if (hasHash && item.hash && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    handleCopy(item.hash, item.key);
+                  }
+                }}
+              >
+                {/* Hash Category Icon */}
+                <div
+                  className={`p-1.5 rounded-lg ${item.iconBg} ${item.iconColor} shrink-0 transition-transform ${hasHash ? "group-hover:scale-105 duration-200" : ""}`}
                 >
-                  {copiedKey === "reportHash" ? (
-                    <CheckIcon size={14} className="text-emerald-500" />
-                  ) : (
-                    <CopyIcon size={14} />
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
+                  <item.icon size={14} />
+                </div>
 
-          {/* Dispute Reason Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
-            <span className="text-neutral-500 font-sans text-xs">
-              Motivo de Objeción (Reason Hash):
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-neutral-800 dark:text-neutral-200">
-                {truncateHash(data.hashes.reasonHash || "")}
-              </span>
-              {data.hashes.reasonHash && (
-                <button
-                  onClick={() =>
-                    handleCopy(data.hashes.reasonHash!, "reasonHash")
-                  }
-                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-                  title="Copiar hash"
-                >
-                  {copiedKey === "reasonHash" ? (
-                    <CheckIcon size={14} className="text-emerald-500" />
+                {/* Minimized Hash Label */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-100 tracking-tight">
+                    {item.label}
+                  </span>
+                  {hasHash ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                   ) : (
-                    <CopyIcon size={14} />
+                    <span className="text-[9px] text-neutral-400 dark:text-neutral-500 font-normal">
+                      (—)
+                    </span>
                   )}
-                </button>
-              )}
-            </div>
-          </div>
+                </div>
 
-          {/* Dispute Evidence Hash */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200/50 dark:border-neutral-800/60 gap-1.5">
-            <span className="text-neutral-500 font-sans text-xs">
-              Pruebas de Disputa (Dispute Evidence):
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-neutral-800 dark:text-neutral-200">
-                {truncateHash(data.hashes.disputeEvidenceHash || "")}
-              </span>
-              {data.hashes.disputeEvidenceHash && (
-                <button
-                  onClick={() =>
-                    handleCopy(
-                      data.hashes.disputeEvidenceHash!,
-                      "disputeEvidenceHash"
-                    )
-                  }
-                  className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-                  title="Copiar hash"
-                >
-                  {copiedKey === "disputeEvidenceHash" ? (
-                    <CheckIcon size={14} className="text-emerald-500" />
-                  ) : (
-                    <CopyIcon size={14} />
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
+                {/* Animated Expandable Hash & Copy Button (Only if hash present) */}
+                {hasHash && item.hash && (
+                  <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
+                    {isCopied ? (
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1">
+                        <CheckIcon size={12} />
+                        ¡Copiado!
+                      </span>
+                    ) : (
+                      <>
+                        <span className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300 font-medium shrink-0">
+                          {truncateHash(item.hash, 4, 4)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopy(item.hash!, item.key);
+                          }}
+                          className="p-1 rounded text-neutral-400 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+                          title="Copiar hash completo"
+                          aria-label={`Copiar hash de ${item.label}`}
+                        >
+                          <CopyIcon size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

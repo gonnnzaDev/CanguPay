@@ -38,7 +38,7 @@ export function ThemeSwitcher() {
             ? "w-0 opacity-0 pointer-events-none"
             : "w-7 h-7 opacity-100 text-neutral-700 dark:text-neutral-200"
         }`}
-        title={`Tema: ${currentOption.label} (pasar el cursor para cambiar)`}
+        title={`Tema: ${currentOption.label}`}
       >
         {currentOption.icon}
       </div>
