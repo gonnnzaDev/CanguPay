@@ -242,12 +242,21 @@ impl ConditionalPayment {
     }
 
     /// El buyer aprueba un PASS: el contrato transfiere exactamente `amount`
-    /// al supplier una sola vez.
+    /// al supplier una sola vez, solo antes de `attested_at+objection_period`.
+    /// Desde `now >= deadline` solo `finalize()` puede ejecutar el vencimiento
+    /// (`NoObjection`).
     pub fn approve(env: Env) {
         let config = read_config(&env);
         config.buyer.require_auth();
         if read_state(&env) != EscrowState::AttestedPass {
             panic_with_error!(&env, Error::AlreadyApproved);
+        }
+        let attested_at: u64 = env.storage().instance().get(&DataKey::AttestedAt).unwrap();
+        let deadline = attested_at
+            .checked_add(config.objection_period)
+            .expect("objection_period overflow");
+        if env.ledger().timestamp() >= deadline {
+            panic_with_error!(&env, Error::ObjectionDeadlinePassed);
         }
 
         let current = env.current_contract_address();
@@ -280,8 +289,14 @@ impl ConditionalPayment {
             EscrowState::Cancelled
             | EscrowState::Released
             | EscrowState::Refunded
-            | EscrowState::Split
-            | EscrowState::Disputed => state,
+            | EscrowState::Split => state,
+            EscrowState::Disputed => {
+                // Disputed no es terminal en finalize() P0-03; el fallback por
+                // resolution_period se implementa en P0-04. Hasta entonces,
+                // finalize() no liquida Disputed y reporta NotFinalizableYet
+                // si se invoca antes de P0-04.
+                panic_with_error!(&env, Error::NotFinalizableYet);
+            }
             EscrowState::Created => {
                 panic_with_error!(&env, Error::NotFinalizableYet);
             }

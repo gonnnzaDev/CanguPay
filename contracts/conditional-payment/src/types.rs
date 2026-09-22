@@ -92,4 +92,5 @@ pub enum Error {
     InvalidResolutionPeriod = 14,
     InvalidFallback = 15,
     AttestationDeadlinePassed = 16,
+    ObjectionDeadlinePassed = 17,
 }

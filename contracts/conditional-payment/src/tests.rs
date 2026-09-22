@@ -1101,6 +1101,62 @@ fn no_objection_timeout_releases_to_supplier() {
 }
 
 #[test]
+fn approve_rejects_at_and_after_objection_deadline_only_finalize_succeeds() {
+    let ctx = setup(true);
+    ctx.to_attested_pass();
+    // to_attested_pass attest en FUNDED_AT (0), deadline = 0 + OBJECTION_PERIOD
+    let deadline = FUNDED_AT + OBJECTION_PERIOD;
+
+    // deadline-1: approve sí puede
+    ctx.env.ledger().set_timestamp(deadline - 1);
+    ctx.client().approve();
+    assert_eq!(ctx.client().state(), EscrowState::Released);
+    assert_eq!(ctx.token_balance(&ctx.supplier), AMOUNT);
+    assert_eq!(ctx.token_balance(&ctx.contract), 0);
+
+    // reset para probar deadline y deadline+1
+    let ctx2 = setup(true);
+    ctx2.to_attested_pass();
+    assert_eq!(ctx2.client().state(), EscrowState::AttestedPass);
+
+    // deadline: approve debe rechazar, solo finalize
+    ctx2.env.ledger().set_timestamp(deadline);
+    must_panic(|| ctx2.client().approve());
+    assert_eq!(ctx2.client().state(), EscrowState::AttestedPass);
+    assert_eq!(ctx2.token_balance(&ctx2.supplier), 0);
+    assert_eq!(ctx2.token_balance(&ctx2.contract), AMOUNT);
+    let ret = ctx2.client().finalize();
+    assert_eq!(ret, EscrowState::Released);
+    assert_eq!(ctx2.token_balance(&ctx2.supplier), AMOUNT);
+
+    // deadline+1: idem
+    let ctx3 = setup(true);
+    ctx3.to_attested_pass();
+    ctx3.env.ledger().set_timestamp(deadline + 1);
+    must_panic(|| ctx3.client().approve());
+    assert_eq!(ctx3.client().state(), EscrowState::AttestedPass);
+    let ret3 = ctx3.client().finalize();
+    assert_eq!(ret3, EscrowState::Released);
+    assert_eq!(ctx3.token_balance(&ctx3.supplier), AMOUNT);
+
+    // Disputed no es terminal en finalize P0-03: finalize en Disputed debe ser NotFinalizableYet
+    // (simulado: seteamos estado Disputed directamente para verificar que no lo trata como terminal)
+    let ctx4 = setup(true);
+    ctx4.initialize();
+    ctx4.env.as_contract(&ctx4.contract, || {
+        ctx4.env
+            .storage()
+            .instance()
+            .set(&DataKey::State, &EscrowState::Disputed)
+    });
+    assert_eq!(ctx4.client().state(), EscrowState::Disputed);
+    must_panic(|| {
+        ctx4.client().finalize();
+    });
+    assert_eq!(ctx4.client().state(), EscrowState::Disputed);
+}
+
+#[test]
 fn correction_timeout_refunds_buyer() {
     let ctx = setup(true);
     ctx.initialize();
