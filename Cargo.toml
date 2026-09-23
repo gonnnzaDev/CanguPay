@@ -1,7 +1,21 @@
-[package]
-name = "cangu-pay"
+[workspace]
+members = [
+    "contracts/conditional-payment",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 
-# Workspace root para el proyecto CanguPay
-# Define members del proyecto Rust
+[workspace.dependencies]
+soroban-sdk = "27.0.6"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+lto = true
+codegen-units = 1
+panic = "abort"
