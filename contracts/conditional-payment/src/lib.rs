@@ -356,10 +356,6 @@ impl ConditionalPayment {
                 panic_with_error!(&env, Error::InvalidState);
             }
         }
-        // No debe existir disputa previa ni settlement
-        if env.storage().instance().has(&DataKey::DisputedAt) {
-            panic_with_error!(&env, Error::InvalidState);
-        }
         let disputed_at = now;
         let resolution_deadline = disputed_at
             .checked_add(config.resolution_period)
@@ -373,13 +369,12 @@ impl ConditionalPayment {
         env.storage()
             .instance()
             .set(&DataKey::ResolutionDeadline, &resolution_deadline);
-        // Guardar hashes para auditoría (opcional, pero útil)
         env.storage()
             .instance()
-            .set(&DataKey::ReportHash, &reason_hash);
+            .set(&DataKey::DisputeReasonHash, &reason_hash);
         env.storage()
             .instance()
-            .set(&DataKey::EvidenceBundleHash, &dispute_evidence_hash);
+            .set(&DataKey::DisputeEvidenceHash, &dispute_evidence_hash);
 
         // Determinar quién disputa para el evento
         let by = if state == EscrowState::AttestedPass {
@@ -412,10 +407,9 @@ impl ConditionalPayment {
         if now >= deadline {
             panic_with_error!(&env, Error::InvalidState);
         }
-        // Validar split_bps según outcome
         match outcome {
             FallbackOutcome::Split => {
-                if split_bps == 0 || split_bps > 9_999 {
+                if !(1..=9_999).contains(&split_bps) {
                     panic_with_error!(&env, Error::InvalidFallback);
                 }
             }
@@ -423,13 +417,7 @@ impl ConditionalPayment {
                 if split_bps != 0 {
                     panic_with_error!(&env, Error::InvalidFallback);
                 }
-                if split_bps > 10_000 {
-                    panic_with_error!(&env, Error::InvalidFallback);
-                }
             }
-        }
-        if split_bps > 10_000 {
-            panic_with_error!(&env, Error::InvalidFallback);
         }
         let current = env.current_contract_address();
         let state = match outcome {

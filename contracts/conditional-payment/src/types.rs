@@ -74,6 +74,8 @@ pub enum DataKey {
     DisputedAt,
     ResolutionDeadline,
     CorrectionAttempts,
+    DisputeReasonHash,
+    DisputeEvidenceHash,
 }
 
 #[contracterror]

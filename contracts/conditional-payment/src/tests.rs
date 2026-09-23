@@ -128,6 +128,8 @@ impl TestContext {
     }
 
     fn to_attested_pass(&self) {
+        // Helper happy-path con mock_all_auths; auth por rol se verifica
+        // exhaustivamente en los tests de auth estrictos (setup(false) + MockAuth).
         self.initialize();
         self.mint_and_fund();
         self.client().submit_evidence(&evidence_hash(&self.env));
