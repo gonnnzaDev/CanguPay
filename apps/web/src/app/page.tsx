@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   CanguPayLogo,
   NetworkIcon,
@@ -15,9 +15,9 @@ import { EscrowDetails } from "@/components/escrow/EscrowDetails";
 import { CreateEscrowModal } from "@/components/escrow/CreateEscrowModal";
 import {
   EscrowStatus,
-  FallbackOutcome,
   deriveWalletRole,
   getAvailableActions,
+  mapOnChainEscrow,
 } from "@/types/escrow";
 
 import { mockEscrows } from "@/dev/mockEscrow";
@@ -28,7 +28,6 @@ export default function Home() {
   const [activeScenario, setActiveScenario] = useState<EscrowStatus>("FUNDED");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
-  const [isEmpty, setIsEmpty] = useState<boolean>(false);
   const [isSimulatingExpired, setIsSimulatingExpired] = useState<boolean>(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [onChainState, setOnChainState] = useState<string | null>(null);
@@ -45,66 +44,47 @@ export default function Home() {
 
   const contractId = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ID || "";
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setIsLoading(true);
     setHasError(false);
-    setIsEmpty(false);
     setRpcError(null);
-    // Contract ID dinámico con fallback: currentData?.contractId || env var (si currentData ya tiene on-chain id)
-    const targetId = contractId;
-    if (targetId) {
+    setOnChainState(null);
+    setOnChainConfig(null);
+    if (contractId) {
       try {
-        const res = await fetchOnChainEscrow(targetId);
+        const res = await fetchOnChainEscrow(contractId);
         if (res.error) {
           setRpcError(res.error);
           setHasError(true);
         } else {
-          if (res.state) setOnChainState(res.state);
-          if (res.config) setOnChainConfig(res.config as Record<string, unknown>);
-          // si no hay error, seguimos mostrando mock hasta que RPC sea autoritativo
+          setOnChainState(res.state);
+          setOnChainConfig(res.config as Record<string, unknown> | null);
         }
       } catch (e) {
         setRpcError(e instanceof Error ? e.message : String(e));
         setHasError(true);
       }
     }
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 450);
-  };
+    setIsLoading(false);
+  }, [contractId]);
 
-  // Derivar datos on-chain si están disponibles, sino mock (mantener indicador mock)
-  const isMock = !contractId || !onChainState || !onChainConfig;
-  const currentData = (() => {
-    if (isEmpty) return null;
-    if (!isMock && onChainState && onChainConfig) {
-      // Mapear config on-chain a EscrowDetailsData (parties desde config, status desde state)
-      const cfg = onChainConfig as unknown as {
-        buyer?: string;
-        supplier?: string;
-        resolver?: string;
-        engine?: string;
-        amount?: string | number;
-        fallbackOutcome?: string;
-      };
-      const parties = {
-        buyer: String(cfg.buyer || ""),
-        supplier: String(cfg.supplier || ""),
-        resolver: String(cfg.resolver || ""),
-        engine: String(cfg.engine || ""),
-      };
-      const status = (onChainState as EscrowStatus) || activeScenario;
-      // Usar mock como base visual pero sobreescribir parties/status on-chain
-      const base = mockEscrows[status] || mockEscrows[activeScenario];
-      const fallback = (cfg.fallbackOutcome as FallbackOutcome) || base.fallbackOutcome;
-      return base ? { ...base, parties, status, contractId, fallbackOutcome: fallback } : null;
-    }
-    return mockEscrows[activeScenario] || null;
-  })();
+  useEffect(() => {
+    if (!contractId) return;
+    const timer = setTimeout(() => void handleRefresh(), 0);
+    return () => clearTimeout(timer);
+  }, [contractId, handleRefresh]);
+
+  // A configured contract never falls back to preview data, even for partial RPC reads.
+  const isMock = !contractId;
+  const currentData = isMock
+    ? mockEscrows[activeScenario]
+    : mapOnChainEscrow(onChainState, onChainConfig, contractId);
+  const canPreviewFinalize = isMock && isSimulatingExpired;
 
   const derivedRole = deriveWalletRole(address, currentData?.parties);
   const availableActions = currentData
-    ? getAvailableActions(derivedRole, currentData.status, isSimulatingExpired, t, currentData.fallbackOutcome)
+    ? getAvailableActions(derivedRole, currentData.status, canPreviewFinalize, t, currentData.fallbackOutcome)
+      .filter((action) => isMock || action.id !== "create")
     : [];
 
   const handleActionClick = (actionId: string) => {
@@ -168,15 +148,10 @@ export default function Home() {
         <span className="font-bold tracking-wider uppercase shrink-0">
           {t("alerts.mock_data_badge")}
         </span>
-        {rpcError && (
-          <span className="text-[10px] text-rose-700 dark:text-rose-300">RPC: {rpcError}</span>
-        )}
-        {!contractId && (
-          <span className="text-[10px] text-neutral-500">sin NEXT_PUBLIC_ESCROW_CONTRACT_ID — usando mockEscrows</span>
-        )}
+        <span className="text-[10px] text-neutral-600 dark:text-neutral-300">{t("alerts.mock_only")}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2 shrink-0">
-        {/* Simular Vencimiento Toggle */}
+        {/* Preview-only expiry toggle. */}
         <label className="flex items-center gap-1.5 cursor-pointer text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 hover:border-amber-500 rounded px-2 py-0.5 select-none transition-colors">
           <input
             type="checkbox"
@@ -197,8 +172,8 @@ export default function Home() {
           value={activeScenario}
           onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
           className="text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded px-1.5 py-0.5 font-mono cursor-pointer"
-          title="Escenario de desarrollo para previsualizar estados"
-          aria-label="Escenario de desarrollo"
+          title={t("alerts.scenario_label")}
+          aria-label={t("alerts.scenario_label")}
         >
           {Object.keys(mockEscrows).map((status) => (
             <option key={status} value={status}>
@@ -208,7 +183,13 @@ export default function Home() {
         </select>
       </div>
     </div>
-  ) : null;
+  ) : (
+    <div role="status" className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-900 dark:text-blue-200 text-xs font-mono">
+      <strong className="uppercase">{t("alerts.onchain_data_badge")}</strong>
+      <span className="ml-2">{t("alerts.onchain_partial")}</span>
+      {rpcError && <span className="ml-2 text-rose-700 dark:text-rose-300">RPC: {rpcError}</span>}
+    </div>
+  );
 
   return (
     <div className="min-h-screen font-sans antialiased selection:bg-teal-500/20">
@@ -294,13 +275,15 @@ export default function Home() {
           <EscrowDetails
             data={currentData}
             isLoading={isLoading}
-            error={hasError ? t("alerts.contract_error") : null}
+            error={hasError ? `${t("alerts.contract_error")}: ${rpcError || t("alerts.unavailable")}` : null}
+            emptyTitle={isMock ? undefined : t("alerts.onchain_unavailable_title")}
+            emptyDescription={isMock ? undefined : t("alerts.onchain_unavailable_desc")}
             onRefresh={handleRefresh}
             actionSlot={actionSlot}
             bannerSlot={bannerSlot}
             viewerRole={derivedRole}
-            canFinalize={isSimulatingExpired}
-            onCreateEscrow={() => setIsCreateModalOpen(true)}
+            canFinalize={canPreviewFinalize}
+            onCreateEscrow={isMock ? () => setIsCreateModalOpen(true) : undefined}
           />
         </div>
       </main>

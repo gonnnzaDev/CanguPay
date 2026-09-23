@@ -21,6 +21,7 @@ import {
   WalletState,
   TESTNET_PASSPHRASE,
 } from "@/types/wallet";
+import { signWithFreighterGuard } from "@/lib/sign-transaction-guard";
 
 const WalletContext = createContext<WalletState | undefined>(undefined);
 
@@ -224,79 +225,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     async (
       xdr: string
     ): Promise<{ success: boolean; error?: string; signedXdr?: string }> => {
-      // Re-verify network dynamically immediately before signing (fail-closed check)
-      let freshPassphrase: string | null = null;
-      let freshNetwork: WalletNetwork = "UNKNOWN";
-
-      try {
-        const freshNet = await queryFreighterNetwork();
-        freshPassphrase = freshNet.passphrase;
-        freshNetwork = freshNet.network;
-        setNetwork(freshNetwork);
-        setNetworkPassphrase(freshPassphrase);
-      } catch {
-        return {
-          success: false,
-          error: "ACCION BLOQUEADA: No se pudo verificar la red en Freighter. Estado fail-closed.",
-        };
-      }
-
-      if (freshPassphrase !== TESTNET_PASSPHRASE) {
-        return {
-          success: false,
-          error: `ACCION BLOQUEADA POR SEGURIDAD: La red (${freshNetwork}) no coincide con la passphrase oficial de Stellar Testnet ("${TESTNET_PASSPHRASE}"). Por especificación P0, toda firma fuera de Testnet está estrictamente bloqueada.`,
-        };
-      }
-
-      if (!isConnected || !address) {
-        return {
-          success: false,
-          error: "Conecta tu wallet Freighter para firmar en Testnet.",
-        };
-      }
-
-      try {
-        const signedRes: unknown = await signFreighterTransaction(xdr, {
-          networkPassphrase: TESTNET_PASSPHRASE,
-        });
-
-        // Freighter puede devolver string directo o objeto con { signedTxXdr, signerAddress, error }
-        const asObj = signedRes as {
-          signedTxXdr?: string;
-          signerAddress?: string;
-          address?: string;
-          error?: string;
-        } | null;
-
-        if (asObj && typeof asObj === "object" && "error" in asObj && asObj.error) {
-          return { success: false, error: String(asObj.error) };
-        }
-
-        const signedXdr =
-          typeof signedRes === "string"
-            ? signedRes
-            : asObj?.signedTxXdr;
-
-        const signerAddress = asObj?.signerAddress || asObj?.address || null;
-
-        if (!signedXdr || typeof signedXdr !== "string" || signedXdr.trim() === "") {
-          return { success: false, error: "Firma vacía: Freighter no devolvió signedTxXdr." };
-        }
-
-        if (signerAddress && address && signerAddress.trim() !== address.trim()) {
-          return {
-            success: false,
-            error: `Firma rechazada: signerAddress (${signerAddress}) no coincide con la wallet conectada (${address}).`,
-          };
-        }
-
-        return { success: true, signedXdr };
-      } catch (err: unknown) {
-        return {
-          success: false,
-          error: err instanceof Error ? err.message : "Firma rechazada por el usuario en Freighter.",
-        };
-      }
+      return signWithFreighterGuard({
+        xdr,
+        connectedAddress: address,
+        isConnected,
+        expectedPassphrase: TESTNET_PASSPHRASE,
+        queryNetwork: queryFreighterNetwork,
+        onNetworkChecked: (freshNetwork, freshPassphrase) => {
+          setNetwork(freshNetwork);
+          setNetworkPassphrase(freshPassphrase);
+        },
+        signTransaction: signFreighterTransaction,
+      });
     },
     [isConnected, address]
   );

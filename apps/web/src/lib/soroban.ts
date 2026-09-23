@@ -1,6 +1,7 @@
 "use client";
 
 import * as StellarSdk from "@stellar/stellar-sdk";
+import type { EscrowStatus, FallbackOutcome } from "../types/escrow";
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
 const CONTRACT_ID = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ID || "";
@@ -14,14 +15,87 @@ function getServer() {
   return server;
 }
 
+const STATE_VARIANTS: Record<string, EscrowStatus> = {
+  Created: "CREATED",
+  Funded: "FUNDED",
+  EvidenceSubmitted: "EVIDENCE_SUBMITTED",
+  AttestedPass: "ATTESTED_PASS",
+  AttestedFail: "ATTESTED_FAIL",
+  Disputed: "DISPUTED",
+  Cancelled: "CANCELLED",
+  Released: "RELEASED",
+  Refunded: "REFUNDED",
+  Split: "SPLIT",
+};
+
+// Discriminants follow EscrowState's declaration order in the contract ABI.
+const STATE_DISCRIMINANTS: readonly EscrowStatus[] = [
+  "CREATED", "FUNDED", "EVIDENCE_SUBMITTED", "ATTESTED_PASS", "ATTESTED_FAIL",
+  "RELEASED", "CANCELLED", "REFUNDED", "DISPUTED", "SPLIT",
+];
+
+function enumTag(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && !Array.isArray(value) &&
+      typeof (value as { tag?: unknown }).tag === "string") {
+    return (value as { tag: string }).tag;
+  }
+  return null;
+}
+
+export function mapEscrowState(value: unknown): EscrowStatus | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? STATE_DISCRIMINANTS[value] ?? null : null;
+  }
+  const tag = enumTag(value);
+  return tag && Object.hasOwn(STATE_VARIANTS, tag) ? STATE_VARIANTS[tag] : null;
+}
+
+const FALLBACK_VARIANTS: Record<string, FallbackOutcome> = {
+  Release: "RELEASE",
+  Refund: "REFUND",
+  Split: "SPLIT",
+};
+
+const FALLBACK_DISCRIMINANTS: Record<number, FallbackOutcome> = {
+  1: "RELEASE",
+  2: "REFUND",
+  3: "SPLIT",
+};
+
+function mapFallbackOutcome(value: unknown): FallbackOutcome | null {
+  if (typeof value === "number") {
+    return Object.hasOwn(FALLBACK_DISCRIMINANTS, value) ? FALLBACK_DISCRIMINANTS[value] : null;
+  }
+  const tag = enumTag(value);
+  return tag && Object.hasOwn(FALLBACK_VARIANTS, tag) ? FALLBACK_VARIANTS[tag] : null;
+}
+
+export function mapEscrowConfig(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const config: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) {
+    const camelKey = key.replace(/_([a-z0-9])/g, (_, letter: string) => letter.toUpperCase());
+    if (camelKey === "fallbackOutcome") {
+      const outcome = mapFallbackOutcome(field);
+      if (!outcome) return null;
+      config[camelKey] = outcome;
+    } else {
+      config[camelKey] = field;
+    }
+  }
+  return config;
+}
+
 /**
  * Reads EscrowConfig and EscrowState directly from chain via soroban RPC.
  * Uses `state()` and `config()` view functions of the ConditionalPayment contract.
- * Returns null if contractId not set or RPC fails (caller must fallback to mock).
+ * Returns null fields and an error when the contract ID, read, or mapping fails.
  */
 export async function fetchOnChainEscrow(contractId: string = CONTRACT_ID): Promise<{
-  config: unknown | null;
-  state: string | null;
+  config: Record<string, unknown> | null;
+  state: EscrowStatus | null;
   rawConfig: unknown | null;
   error?: string;
 }> {
@@ -34,63 +108,17 @@ export async function fetchOnChainEscrow(contractId: string = CONTRACT_ID): Prom
   }
 
   try {
-    // Use SorobanRpc to simulate view calls (no signing needed for state/config)
-    const source = StellarSdk.Keypair.random(); // dummy source for simulation
-    const contract = new StellarSdk.Contract(contractId);
+    const stateResponse = await srv.queryContract<unknown>(contractId, "state");
+    if (!stateResponse.isReadCall) throw new Error("State query is not read-only");
+    const state = mapEscrowState(stateResponse.result);
+    if (!state) throw new Error("Unknown escrow state returned by contract");
 
-    // state() -> EscrowState
-    const stateOp = contract.call("state");
-    // config() -> EscrowConfig
-    const configOp = contract.call("config");
+    const configResponse = await srv.queryContract<unknown>(contractId, "config");
+    if (!configResponse.isReadCall) throw new Error("Config query is not read-only");
+    const config = mapEscrowConfig(configResponse.result);
+    if (!config) throw new Error("Invalid escrow config returned by contract");
 
-    // Build a dummy transaction for simulation
-    const account = new StellarSdk.Account(source.publicKey(), "0");
-    const txState = new StellarSdk.TransactionBuilder(account, {
-      fee: "100",
-      networkPassphrase: StellarSdk.Networks.TESTNET,
-    })
-      .addOperation(stateOp)
-      .setTimeout(30)
-      .build();
-
-    const simState = await srv.simulateTransaction(txState);
-    let stateVal: string | null = null;
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simState) && simState.result?.retval) {
-      try {
-        // retval is ScVal; convert via scValToNative
-        const native = StellarSdk.scValToNative(simState.result.retval as unknown as StellarSdk.xdr.ScVal);
-        // native is string like "Created" or enum variant
-        if (typeof native === "string") stateVal = native.toUpperCase();
-        else if (native && typeof native === "object" && "tag" in (native as Record<string, unknown>)) {
-          stateVal = String((native as { tag: string }).tag).toUpperCase();
-        } else {
-          stateVal = String(native).toUpperCase();
-        }
-      } catch {
-        stateVal = null;
-      }
-    }
-
-    const account2 = new StellarSdk.Account(source.publicKey(), "0");
-    const txConfig = new StellarSdk.TransactionBuilder(account2, {
-      fee: "100",
-      networkPassphrase: StellarSdk.Networks.TESTNET,
-    })
-      .addOperation(configOp)
-      .setTimeout(30)
-      .build();
-
-    const simConfig = await srv.simulateTransaction(txConfig);
-    let configVal: unknown | null = null;
-    if (StellarSdk.rpc.Api.isSimulationSuccess(simConfig) && simConfig.result?.retval) {
-      try {
-        configVal = StellarSdk.scValToNative(simConfig.result.retval as unknown as StellarSdk.xdr.ScVal);
-      } catch {
-        configVal = null;
-      }
-    }
-
-    return { config: configVal, state: stateVal, rawConfig: configVal };
+    return { config, state, rawConfig: configResponse.result };
   } catch (e) {
     return {
       config: null,
@@ -98,29 +126,5 @@ export async function fetchOnChainEscrow(contractId: string = CONTRACT_ID): Prom
       rawConfig: null,
       error: e instanceof Error ? e.message : String(e),
     };
-  }
-}
-
-/**
- * Derives the expected finalize outcome dynamically from on-chain state,
- * matching docs/state-machine.md:23.
- */
-export function deriveFinalizeOutcome(
-  status: string,
-  fallbackOutcome?: string | null
-): string {
-  switch (status) {
-    case "FUNDED":
-      return "REFUNDED"; // SUBMISSION_TIMEOUT
-    case "EVIDENCE_SUBMITTED":
-      return "REFUNDED"; // ATTESTATION_TIMEOUT
-    case "ATTESTED_PASS":
-      return "RELEASED"; // NO_OBJECTION
-    case "ATTESTED_FAIL":
-      return "REFUNDED"; // CORRECTION_TIMEOUT
-    case "DISPUTED":
-      return fallbackOutcome || "SPLIT"; // RESOLUTION_TIMEOUT → fallback
-    default:
-      return "REFUNDED";
   }
 }

@@ -5,6 +5,7 @@ import {
   EscrowDetailsProps,
   EscrowStatus,
   getActiveActor,
+  getAvailableActions,
   isTerminalStatus,
 } from "@/types/escrow";
 import {
@@ -222,6 +223,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   data,
   isLoading = false,
   error = null,
+  emptyTitle,
+  emptyDescription,
   onRefresh,
   actionSlot,
   bannerSlot,
@@ -325,14 +328,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   if (!data) {
     return (
       <div className="w-full max-w-5xl mx-auto p-12 text-center border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl bg-neutral-50/50 dark:bg-neutral-950/50">
+        {bannerSlot}
         <div className="mx-auto w-12 h-12 rounded bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center text-neutral-400 mb-3 border border-neutral-200/60 dark:border-neutral-800/60">
           <FileTextIcon size={20} />
         </div>
         <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-          {t("alerts.no_contract")}
+          {emptyTitle || t("alerts.no_contract")}
         </h3>
         <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto font-mono text-xs">
-          {t("alerts.no_contract_desc")}
+          {emptyDescription || t("alerts.no_contract_desc")}
         </p>
         <div className="mt-4 flex items-center justify-center gap-3">
           {onCreateEscrow && (
@@ -370,8 +374,11 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
     deadlineDiffSeconds = data.activeDeadline.timestamp - currentTime;
   }
 
-  const isExpired = deadlineDiffSeconds <= 0 && data.activeDeadline !== undefined && !isTerminal;
-  const isFinalizeTriggerable = canFinalize || isExpired;
+  // Browser time is a visual countdown, not proof that a ledger deadline has passed.
+  const finalizeOutcome = canFinalize
+    ? getAvailableActions(null, data.status, true, undefined, data.fallbackOutcome)
+      .find((action) => action.id === "finalize")?.expectedOutcome
+    : undefined;
 
   const explorerUrl = data.transactionHash
     ? `${data.explorerBaseUrl || "https://stellar.expert/explorer/testnet"}/tx/${data.transactionHash}`
@@ -379,9 +386,9 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       ? `${data.explorerBaseUrl || "https://stellar.expert/explorer/testnet"}/contract/${data.contractId}`
       : null;
 
-  const supplierPct = data.fallbackSplitBps ? data.fallbackSplitBps / 100 : 50;
-  const buyerPct = data.fallbackSplitBps ? 100 - data.fallbackSplitBps / 100 : 50;
-  const fallbackBpsLabel = `${t("fallback.supplier_share", { pct: supplierPct })} / ${t("fallback.buyer_share", { pct: buyerPct })}`;
+  const supplierPct = data.fallbackSplitBps === undefined ? null : data.fallbackSplitBps / 100;
+  const fallbackBpsLabel = supplierPct === null ? t("alerts.unavailable")
+    : `${t("fallback.supplier_share", { pct: supplierPct })} / ${t("fallback.buyer_share", { pct: 100 - supplierPct })}`;
 
   return (
     <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 space-y-6 text-neutral-900 dark:text-neutral-100">
@@ -391,7 +398,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           <div className="flex items-center gap-2 mb-1.5 font-mono text-[11px]">
             <span className="text-teal-600 dark:text-teal-400 font-semibold flex items-center gap-1.5">
               <ShieldLockIcon size={14} />
-              SOROBAN // ESCROW
+              {data.source === "onchain" ? t("alerts.onchain_data_badge") : t("alerts.mock_data_badge")}
             </span>
           </div>
 
@@ -440,15 +447,15 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
       {bannerSlot}
 
-      {/* Permissionless Finalize Alert Banner (when deadline expired or simulated) */}
-      {isFinalizeTriggerable && !isTerminal && (
+      {/* Preview-only finalize outcome; the browser clock never authorizes a transaction. */}
+      {finalizeOutcome && !isTerminal && (
         <div className="p-3 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shadow-xs">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
               <ClockIcon size={16} />
             </div>
             <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
-              {t("alerts.finalize_expired", { outcome: data.fallbackOutcome || "SPLIT" })}
+              {t("alerts.finalize_expired", { outcome: finalizeOutcome })}
             </p>
           </div>
           <span className="shrink-0 px-2.5 py-1 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200 font-bold text-[10px] tracking-wider uppercase border border-amber-500/30">
@@ -570,18 +577,18 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         <div className="p-6 sm:p-8 rounded-2xl border border-neutral-200/90 dark:border-neutral-800/90 bg-neutral-50/50 dark:bg-neutral-900/40 shadow-xs flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between gap-2 mb-3">
             <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-mono">
-              {t("metrics.funds_under_custody")}
+              {t(data.source === "onchain" ? "metrics.contract_amount_raw" : "metrics.funds_under_custody")}
             </span>
-            <span className="text-[11px] font-mono text-teal-700 dark:text-teal-300 font-bold border border-teal-500/30 bg-teal-500/10 px-2.5 py-0.5 rounded-full shrink-0">
-              SAC · Stellar Testnet
-            </span>
+            {data.asset && <span className="text-[11px] font-mono text-teal-700 dark:text-teal-300 font-bold border border-teal-500/30 bg-teal-500/10 px-2.5 py-0.5 rounded-full shrink-0">
+              {data.asset} · Stellar Testnet
+            </span>}
           </div>
 
           {(() => {
-            const [intPart, decPart] = data.amount.split(".");
+            const [intPart, decPart] = (data.amount || t("alerts.unavailable")).split(".");
             return (
               <div className="my-2 flex items-baseline gap-1.5 font-mono flex-wrap min-w-0">
-                <span className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-neutral-950 dark:text-white truncate">
+                <span className={`${data.amount ? "text-5xl sm:text-6xl md:text-7xl" : "text-base sm:text-lg"} font-extrabold tracking-tight text-neutral-950 dark:text-white break-words`}>
                   {intPart}
                 </span>
                 {decPart !== undefined && (
@@ -589,9 +596,9 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                     .{decPart}
                   </span>
                 )}
-                <span className="text-xl sm:text-2xl md:text-3xl font-mono font-bold text-teal-600 dark:text-teal-400 ml-2 shrink-0">
+                {data.asset && <span className="text-xl sm:text-2xl md:text-3xl font-mono font-bold text-teal-600 dark:text-teal-400 ml-2 shrink-0">
                   {data.asset}
-                </span>
+                </span>}
               </div>
             );
           })()}
@@ -795,13 +802,13 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           <p className="text-xs text-neutral-700 dark:text-neutral-300">
             {t("fallback.default_settlement")}{" "}
             <span className="font-bold text-teal-700 dark:text-teal-400">
-              {data.fallbackOutcome || "SPLIT"}
-            </span>{" "}
-            ({data.fallbackOutcome === "SPLIT"
+              {data.fallbackOutcome || t("alerts.unavailable")}
+            </span>
+            {data.fallbackOutcome && <> ({data.fallbackOutcome === "SPLIT"
               ? fallbackBpsLabel
               : data.fallbackOutcome === "RELEASE"
                 ? t("fallback.supplier_share", { pct: 100 })
-                : t("fallback.buyer_share", { pct: 100 })})
+                : t("fallback.buyer_share", { pct: 100 })})</>}
           </p>
         </div>
       </div>

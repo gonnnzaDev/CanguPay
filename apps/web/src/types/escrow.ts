@@ -5,7 +5,7 @@
  * Decoupled from chain bindings and RPC layers.
  */
 
-import { UserRole } from "./wallet";
+import type { UserRole } from "./wallet";
 
 export type EscrowStatus =
   | "CREATED"
@@ -44,6 +44,7 @@ export interface EscrowHashes {
 export type FallbackOutcome = "RELEASE" | "REFUND" | "SPLIT";
 
 export interface EscrowDetailsData {
+  source?: "mock" | "onchain";
   operationId: string;
   contractId?: string;
   status: EscrowStatus;
@@ -63,6 +64,8 @@ export interface EscrowDetailsProps {
   data?: EscrowDetailsData | null;
   isLoading?: boolean;
   error?: string | null;
+  emptyTitle?: string;
+  emptyDescription?: string;
   onRefresh?: () => void;
   actionSlot?: React.ReactNode;
   bannerSlot?: React.ReactNode;
@@ -122,7 +125,8 @@ export function deriveWalletRole(
   parties?: EscrowParties | null
 ): UserRole | null {
   if (!walletAddress) return null;
-  if (!parties) return "observer";
+  // An incomplete chain config cannot prove that an unmatched wallet is an observer.
+  if (!parties?.buyer || !parties.supplier || !parties.resolver) return null;
 
   const addr = walletAddress.trim();
   if (parties.buyer && addr === parties.buyer.trim()) return "buyer";
@@ -130,6 +134,48 @@ export function deriveWalletRole(
   if (parties.resolver && addr === parties.resolver.trim()) return "resolver";
 
   return "observer";
+}
+
+const escrowStatuses: readonly string[] = [
+  "CREATED", "FUNDED", "EVIDENCE_SUBMITTED", "ATTESTED_PASS", "ATTESTED_FAIL",
+  "DISPUTED", "CANCELLED", "RELEASED", "REFUNDED", "SPLIT",
+];
+
+function isFallbackOutcome(value: unknown): value is FallbackOutcome {
+  return value === "RELEASE" || value === "REFUND" || value === "SPLIT";
+}
+
+/** Map only fields actually returned by the RPC adapter; never borrow preview fixtures. */
+export function mapOnChainEscrow(
+  state: string | null,
+  config: unknown,
+  contractId: string
+): EscrowDetailsData | null {
+  if (!state || !escrowStatuses.includes(state)) return null;
+  const cfg = config && typeof config === "object" && !Array.isArray(config)
+    ? config as Record<string, unknown> : {};
+  const source = cfg.parties && typeof cfg.parties === "object" && !Array.isArray(cfg.parties)
+    ? cfg.parties as Record<string, unknown> : cfg;
+  const text = (value: unknown) => typeof value === "string" ? value : "";
+  const fallbackOutcome = isFallbackOutcome(cfg.fallbackOutcome) ? cfg.fallbackOutcome : undefined;
+  return {
+    source: "onchain",
+    contractId,
+    operationId: text(cfg.operationId) || contractId,
+    status: state as EscrowStatus,
+    amount: typeof cfg.amount === "string" || typeof cfg.amount === "number" || typeof cfg.amount === "bigint"
+      ? String(cfg.amount) : "",
+    asset: text(cfg.asset),
+    parties: {
+      buyer: text(source.buyer),
+      supplier: text(source.supplier),
+      resolver: text(source.resolver),
+      engine: text(source.engine),
+    },
+    hashes: {},
+    fallbackOutcome,
+    fallbackSplitBps: typeof cfg.fallbackSplitBps === "number" ? cfg.fallbackSplitBps : undefined,
+  };
 }
 
 export interface EscrowAction {
@@ -159,7 +205,7 @@ export interface EscrowAction {
  * DISPUTED:
  *  - resolver: release (RELEASED), refund (REFUNDED), split (SPLIT)
  * Finalize:
- *  - any account when contract deadline reached (canFinalize === true)
+ *  - any account in an eligible state when contract deadline reached (canFinalize === true)
  */
 export function getAvailableActions(
   role: UserRole | null,
@@ -301,10 +347,9 @@ export function getAvailableActions(
     }
   }
 
-  // Permissionless finalize: expectedOutcome dinámico según matriz state-machine.md:23
-  // FUNDED→REFUNDED, EVIDENCE_SUBMITTED→REFUNDED, ATTESTED_PASS→RELEASED,
-  // ATTESTED_FAIL→REFUNDED, DISPUTED→fallbackOutcome
-  if (canFinalize) {
+  // Finalize follows the documented timeout matrix, not the action actor.
+  // In a dispute, an unknown fallback cannot be presented as a known payout.
+  if (canFinalize && status !== "CREATED" && (status !== "DISPUTED" || isFallbackOutcome(fallbackOutcome))) {
     let outcome: EscrowStatus = "REFUNDED";
     switch (status) {
       case "FUNDED":
@@ -320,7 +365,8 @@ export function getAvailableActions(
         outcome = "REFUNDED";
         break;
       case "DISPUTED":
-        outcome = (fallbackOutcome as EscrowStatus) || "REFUNDED";
+        outcome = fallbackOutcome === "RELEASE" ? "RELEASED"
+          : fallbackOutcome === "REFUND" ? "REFUNDED" : "SPLIT";
         break;
       default:
         outcome = "REFUNDED";
@@ -339,5 +385,3 @@ export function getAvailableActions(
 
   return actions;
 }
-
-

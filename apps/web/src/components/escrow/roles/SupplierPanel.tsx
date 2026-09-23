@@ -44,10 +44,11 @@ export const SupplierPanel: React.FC<SupplierPanelProps> = ({
             {t("roles.supplier.reserved_funds")}
           </span>
           <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
-            {data.amount} <span className="text-indigo-600 dark:text-indigo-400">{data.asset}</span>
+            {data.amount || t("alerts.unavailable")} <span className="text-indigo-600 dark:text-indigo-400">{data.asset}</span>
           </span>
           <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block mt-0.5">
-            {data.status === "CREATED" ? t("roles.supplier.funds_pending") : t("roles.supplier.funds_guaranteed")}
+            {data.source === "onchain" ? t("roles.supplier.balance_unverified")
+              : data.status === "CREATED" ? t("roles.supplier.funds_pending") : t("roles.supplier.funds_guaranteed")}
           </span>
         </div>
 

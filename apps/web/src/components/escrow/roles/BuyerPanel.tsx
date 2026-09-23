@@ -58,7 +58,7 @@ export const BuyerPanel: React.FC<BuyerPanelProps> = ({
             {t("roles.buyer.operation_amount")}
           </span>
           <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
-            {data.amount} <span className="text-teal-600 dark:text-teal-400">{data.asset}</span>
+            {data.amount || t("alerts.unavailable")} <span className="text-teal-600 dark:text-teal-400">{data.asset}</span>
           </span>
         </div>
 
@@ -90,7 +90,8 @@ export const BuyerPanel: React.FC<BuyerPanelProps> = ({
             {t("roles.buyer.fallback_rule")}
           </span>
           <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 block truncate">
-            {data.fallbackOutcome || "SPLIT"} ({data.fallbackOutcome === "SPLIT" ? fallbackBpsLabel : "100%"})
+            {data.fallbackOutcome || t("alerts.unavailable")}
+            {data.fallbackOutcome && ` (${data.fallbackOutcome === "SPLIT" ? fallbackBpsLabel : "100%"})`}
           </span>
         </div>
       </div>

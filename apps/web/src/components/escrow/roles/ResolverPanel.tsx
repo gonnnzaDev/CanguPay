@@ -38,7 +38,7 @@ export const ResolverPanel: React.FC<ResolverPanelProps> = ({ data }) => {
             {t("roles.resolver.disputed_funds")}
           </span>
           <span className="text-sm font-bold text-neutral-950 dark:text-neutral-50">
-            {data.amount} <span className="text-purple-600 dark:text-purple-400">{data.asset}</span>
+            {data.amount || t("alerts.unavailable")} <span className="text-purple-600 dark:text-purple-400">{data.asset}</span>
           </span>
           <span className="text-[10px] text-neutral-400 dark:text-neutral-500 block mt-0.5">
             {t("roles.resolver.op_id", { id: data.operationId })}
