@@ -15,9 +15,15 @@ export function truncateHash(hash: string, start = 8, end = 6): string {
  * Formats seconds difference into a human-readable countdown string.
  */
 export function formatCountdown(diff: number): string {
-  if (diff <= 0) return "Plazo vencido según tiempo local (confirmar ledger)";
+  if (diff <= 0) return "0h 0m 0s";
   const hours = Math.floor(diff / 3600);
   const minutes = Math.floor((diff % 3600) / 60);
   const seconds = diff % 60;
-  return `~${hours}h ${minutes}m ${seconds}s restantes`;
+  return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+/** Keep significant decimals, but don't let an all-zero fractional part dominate the amount. */
+export function splitDisplayAmount(amount: string): { whole: string; fraction: string | null } {
+  const [whole, fraction] = amount.split(".");
+  return { whole, fraction: fraction && !/^0+$/.test(fraction) ? fraction : null };
 }

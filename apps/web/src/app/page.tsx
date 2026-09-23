@@ -12,6 +12,7 @@ import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
+import styles from "@/components/escrow/EscrowVisuals.module.css";
 import { CreateEscrowModal } from "@/components/escrow/CreateEscrowModal";
 import {
   EscrowStatus,
@@ -79,7 +80,9 @@ export default function Home() {
   const currentData = isMock
     ? mockEscrows[activeScenario]
     : mapOnChainEscrow(onChainState, onChainConfig, contractId);
-  const canPreviewFinalize = isMock && isSimulatingExpired;
+  // A preview timeout is explicit and only applies to a known, eligible deadline.
+  const canPreviewFinalize = isMock && isSimulatingExpired && Boolean(address) &&
+    Boolean(currentData?.activeDeadline?.timestamp) && currentData?.status !== "CREATED";
 
   const derivedRole = deriveWalletRole(address, currentData?.parties);
   const availableActions = currentData
@@ -97,7 +100,6 @@ export default function Home() {
     <div className="flex flex-wrap items-center gap-2">
       {currentData?.status === "EVIDENCE_SUBMITTED" && (
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-mono text-[11px] font-medium shadow-2xs">
-          <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
           <span>{t("alerts.waiting_engine")}</span>
         </div>
       )}
@@ -141,53 +143,42 @@ export default function Home() {
   const bannerSlot = isMock ? (
     <div
       role="status"
-      className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono"
+      className={styles.previewBanner}
     >
-      <div className="flex items-center gap-2">
-        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-        <span className="font-bold tracking-wider uppercase shrink-0">
-          {t("alerts.mock_data_badge")}
-        </span>
-        <span className="text-[10px] text-neutral-600 dark:text-neutral-300">{t("alerts.mock_only")}</span>
+      <div className={styles.bannerIntro}>
+        <strong className={styles.bannerBadge}>{t("alerts.mock_data_badge")}</strong>
+        <span className={styles.bannerMessage}>{t("alerts.mock_only")}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-2 shrink-0">
-        {/* Preview-only expiry toggle. */}
-        <label className="flex items-center gap-1.5 cursor-pointer text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 hover:border-amber-500 rounded px-2 py-0.5 select-none transition-colors">
+      <div className={styles.bannerControls}>
+        <label className={styles.expiryToggle}>
           <input
             type="checkbox"
             checked={isSimulatingExpired}
             onChange={(e) => setIsSimulatingExpired(e.target.checked)}
-            className="rounded border-amber-500/50 text-teal-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+            className={styles.expiryCheckbox}
           />
-          <span className="font-bold text-amber-900 dark:text-amber-200">
-            {t("alerts.simulate_expiry")}
-          </span>
+          {t("alerts.simulate_expiry")}
         </label>
-
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300">
-          {t("alerts.dev_preview")}
-        </span>
-
+        <label htmlFor="preview-state" className={styles.scenarioLabel}>{t("alerts.scenario_label")}</label>
         <select
+          id="preview-state"
           value={activeScenario}
           onChange={(e) => setActiveScenario(e.target.value as EscrowStatus)}
-          className="text-[11px] bg-white/80 dark:bg-neutral-900/80 border border-amber-500/40 text-amber-900 dark:text-amber-200 rounded px-1.5 py-0.5 font-mono cursor-pointer"
-          title={t("alerts.scenario_label")}
-          aria-label={t("alerts.scenario_label")}
+          className={styles.scenarioSelect}
         >
           {Object.keys(mockEscrows).map((status) => (
             <option key={status} value={status}>
-              {status}
+              {t(`status.${status}`)}
             </option>
           ))}
         </select>
       </div>
     </div>
   ) : (
-    <div role="status" className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-900 dark:text-blue-200 text-xs font-mono">
-      <strong className="uppercase">{t("alerts.onchain_data_badge")}</strong>
-      <span className="ml-2">{t("alerts.onchain_partial")}</span>
-      {rpcError && <span className="ml-2 text-rose-700 dark:text-rose-300">RPC: {rpcError}</span>}
+    <div role="status" className={styles.onchainBanner}>
+      <strong className={styles.bannerBadge}>{t("alerts.onchain_data_badge")}</strong>
+      <span>{t("alerts.onchain_partial")}</span>
+      {rpcError && <span className={styles.onchainError}>{rpcError}</span>}
     </div>
   );
 
@@ -200,21 +191,17 @@ export default function Home() {
           className="absolute inset-x-0 top-0 h-24 pointer-events-none backdrop-blur-md bg-white/85 dark:bg-neutral-900/85 header-fade-mask"
         />
 
-        <div className="pointer-events-auto relative z-10 max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="pointer-events-auto relative z-10 max-w-5xl mx-auto px-4 sm:px-6 min-h-16 py-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <CanguPayLogo className="h-7 sm:h-8 w-auto" />
             <span className="hidden sm:inline-block text-neutral-300 dark:text-neutral-700 font-light">
               |
             </span>
             <div
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200/80 dark:border-neutral-800/80 bg-neutral-100/70 dark:bg-neutral-900/70 text-neutral-700 dark:text-neutral-300 font-mono text-[11px] font-bold tracking-wider uppercase shadow-2xs"
-              title={
-                derivedRole
-                  ? `${t("header.role")}: ${derivedRole.toUpperCase()}`
-                  : t("header.no_wallet")
-              }
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-neutral-200/80 dark:border-neutral-800/80 bg-neutral-100/70 dark:bg-neutral-900/70 text-neutral-700 dark:text-neutral-300 font-mono text-[11px] font-bold shadow-2xs"
+              title={!address ? t("header.no_wallet") : derivedRole ? `${t("header.role")}: ${t(`header.roles.${derivedRole}`)}` : t("header.role_unavailable")}
             >
-              <span>{t("header.role")}: {derivedRole ? derivedRole.toUpperCase() : "—"}</span>
+              <span>{t("header.role")}: {derivedRole ? t(`header.roles.${derivedRole}`) : "—"}</span>
               {derivedRole && (
                 <RoleIcon role={derivedRole} size={13} className="text-teal-600 dark:text-teal-400" />
               )}
@@ -227,18 +214,14 @@ export default function Home() {
             <ThemeSwitcher />
             <LanguageSwitcher />
 
-            <div
+            {isFreighterInstalled && <div
               className={`flex items-center font-mono text-xs border rounded-lg overflow-hidden shadow-2xs ${
-                !isFreighterInstalled
-                  ? "border-neutral-200 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-900/60 text-neutral-400"
-                  : isExactTestnet
+                isExactTestnet
                     ? "border-teal-500/30 bg-teal-500/5 text-teal-700 dark:text-teal-300"
                     : "border-red-500 bg-red-500/10 text-red-600 dark:text-red-400"
               }`}
               title={
-                !isFreighterInstalled
-                  ? t("header.not_detected")
-                  : isExactTestnet
+                isExactTestnet
                     ? `${t("header.network")}: ${network} (${networkPassphrase || ""})`
                     : `${t("header.blocked")}: ${network}`
               }
@@ -251,20 +234,16 @@ export default function Home() {
               </span>
               <span
                 className={`px-2.5 py-1 text-[11px] font-bold tracking-wider ${
-                  !isFreighterInstalled
-                    ? "text-neutral-400"
-                    : isExactTestnet
+                  isExactTestnet
                       ? "text-teal-700 dark:text-teal-300"
                       : "text-red-600 dark:text-red-400 animate-pulse"
                 }`}
               >
-                {!isFreighterInstalled
-                  ? t("header.not_detected").toUpperCase()
-                  : isExactTestnet
+                {isExactTestnet
                     ? t("header.testnet").toUpperCase()
                     : t("header.blocked").toUpperCase()}
               </span>
-            </div>
+            </div>}
           </div>
         </div>
       </header>

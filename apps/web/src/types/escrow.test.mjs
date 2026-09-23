@@ -21,6 +21,22 @@ test("wallet role is derived from the current escrow participants", () => {
   assert.equal(deriveWalletRole("GOTHER", { ...parties, resolver: "" }), null);
 });
 
+test("the human action matrix is role- and state-scoped; the engine is not a human profile", () => {
+  const ids = (role, status, canFinalize = false, fallback) =>
+    getAvailableActions(role, status, canFinalize, undefined, fallback).map((action) => action.id);
+
+  assert.deepEqual(ids("buyer", "CREATED"), ["create", "fund", "cancel"]);
+  assert.deepEqual(ids("buyer", "ATTESTED_PASS"), ["approve", "dispute_pass"]);
+  assert.deepEqual(ids("supplier", "FUNDED"), ["submit_evidence"]);
+  assert.deepEqual(ids("supplier", "ATTESTED_FAIL"), ["submit_correction", "dispute_fail"]);
+  assert.deepEqual(ids("resolver", "DISPUTED"), ["resolve_release", "resolve_refund", "resolve_split"]);
+  assert.deepEqual(ids("observer", "DISPUTED"), []);
+  assert.deepEqual(ids(null, "FUNDED"), []);
+  assert.deepEqual(ids("observer", "FUNDED", true), ["finalize"]);
+  assert.deepEqual(ids("buyer", "CREATED", true), ["create", "fund", "cancel"]);
+  assert.equal(deriveWalletRole(parties.engine, parties), "observer");
+});
+
 test("finalize is available only in eligible nonterminal states after expiry", () => {
   for (const status of ["CREATED", "CANCELLED", "RELEASED", "REFUNDED", "SPLIT"]) {
     assert.equal(getAvailableActions("observer", status, true).some((action) => action.id === "finalize"), false, status);

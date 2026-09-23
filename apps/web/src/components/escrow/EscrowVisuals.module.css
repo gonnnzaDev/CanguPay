@@ -1,0 +1,248 @@
+.previewBanner,
+.onchainBanner {
+  box-sizing: border-box;
+  border: 1px solid rgba(180, 83, 9, 0.3);
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #451a03;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.previewBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bannerIntro,
+.bannerControls,
+.onchainBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+}
+
+.bannerBadge {
+  font-weight: 600;
+}
+
+.bannerMessage {
+  font-size: 12px;
+  color: #78350f;
+}
+
+.bannerControls {
+  font-size: 12px;
+}
+
+.expiryToggle {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid rgba(146, 64, 14, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.expiryToggle:focus-within {
+  outline: 2px solid #d97706;
+  outline-offset: 2px;
+}
+
+.expiryCheckbox {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  accent-color: #d97706;
+  cursor: pointer;
+}
+
+.scenarioLabel {
+  font-weight: 500;
+}
+
+.scenarioSelect {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1px solid rgba(146, 64, 14, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #451a03;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.scenarioSelect:focus-visible {
+  outline: 2px solid #d97706;
+  outline-offset: 2px;
+}
+
+.onchainBanner {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.08);
+  color: #172554;
+}
+
+.onchainError {
+  flex-basis: 100%;
+  color: #be123c;
+  overflow-wrap: anywhere;
+}
+
+.amountCard {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 24px 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.amountLabel {
+  margin: 0;
+  color: #525252;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.amountValue {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 4px;
+  margin-top: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.amountWhole {
+  min-width: 0;
+  color: #0a0a0a;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+
+.amountFraction,
+.amountAsset {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.amountFraction {
+  color: #525252;
+  font-weight: 500;
+}
+
+.amountAsset {
+  color: #0f766e;
+  font-weight: 600;
+}
+
+.amountUnavailable {
+  margin: 12px 0 0;
+  color: #525252;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.amountNote {
+  margin: 12px 0 0;
+  color: #525252;
+  font-size: 12px;
+}
+
+:global(.dark) .previewBanner {
+  color: #fef3c7;
+}
+
+:global(.dark) .bannerMessage {
+  color: #fde68a;
+}
+
+:global(.dark) .expiryToggle {
+  background: rgba(23, 23, 23, 0.6);
+}
+
+:global(.dark) .scenarioSelect {
+  background: rgba(23, 23, 23, 0.8);
+  color: #fef3c7;
+}
+
+:global(.dark) .onchainBanner {
+  color: #dbeafe;
+}
+
+:global(.dark) .onchainError {
+  color: #fda4af;
+}
+
+:global(.dark) .amountCard {
+  border-color: #404040;
+  background: rgba(23, 23, 23, 0.6);
+}
+
+:global(.dark) .amountWhole {
+  color: #fafafa;
+}
+
+:global(.dark) .amountLabel,
+:global(.dark) .amountFraction,
+:global(.dark) .amountUnavailable,
+:global(.dark) .amountNote {
+  color: #d4d4d4;
+}
+
+:global(.dark) .amountAsset {
+  color: #5eead4;
+}
+
+@media (min-width: 640px) {
+  .amountCard {
+    padding: 32px;
+  }
+
+  .amountWhole {
+    font-size: 48px;
+  }
+
+  .amountFraction {
+    font-size: 24px;
+  }
+
+  .amountAsset {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .previewBanner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .bannerControls {
+    flex-shrink: 0;
+  }
+
+  .amountWhole {
+    font-size: 60px;
+  }
+}

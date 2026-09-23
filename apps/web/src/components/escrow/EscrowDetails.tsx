@@ -23,7 +23,8 @@ import {
   PackageIcon,
   CpuIcon,
 } from "@/components/icons";
-import { truncateHash, formatCountdown } from "./helpers";
+import { truncateHash, formatCountdown, splitDisplayAmount } from "./helpers";
+import styles from "./EscrowVisuals.module.css";
 import {
   BuyerPanel,
   SupplierPanel,
@@ -232,7 +233,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   canFinalize = false,
   onCreateEscrow,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const currentTime = useCurrentTimestamp();
 
@@ -389,27 +390,26 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   const supplierPct = data.fallbackSplitBps === undefined ? null : data.fallbackSplitBps / 100;
   const fallbackBpsLabel = supplierPct === null ? t("alerts.unavailable")
     : `${t("fallback.supplier_share", { pct: supplierPct })} / ${t("fallback.buyer_share", { pct: 100 - supplierPct })}`;
+  const { whole: displayAmount, fraction: displayFraction } = splitDisplayAmount(data.amount);
+  const deadlineText = deadlineDiffSeconds <= 0
+    ? t(data.source === "onchain" ? "metrics.deadline_passed_local" : "metrics.deadline_passed_preview")
+    : t("metrics.time_remaining", { time: formatCountdown(deadlineDiffSeconds) });
+  const hasRecordedHashes = Object.values(data.hashes).some(Boolean);
 
   return (
     <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 space-y-6 text-neutral-900 dark:text-neutral-100">
       {/* Header & Status Indicator */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-neutral-200/80 dark:border-neutral-800/80">
         <div>
-          <div className="flex items-center gap-2 mb-1.5 font-mono text-[11px]">
-            <span className="text-teal-600 dark:text-teal-400 font-semibold flex items-center gap-1.5">
-              <ShieldLockIcon size={14} />
-              {data.source === "onchain" ? t("alerts.onchain_data_badge") : t("alerts.mock_data_badge")}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight font-mono text-neutral-950 dark:text-neutral-50">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <h1 className="min-w-0 break-all text-lg sm:text-2xl font-bold tracking-tight font-mono text-neutral-950 dark:text-neutral-50">
               {data.operationId}
             </h1>
             <button
               onClick={() => handleCopy(data.operationId, "operationId")}
               className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors cursor-pointer"
-              title="Copiar ID"
+              title={t("common.copy")}
+              aria-label={t("common.copy")}
             >
               {copiedKey === "operationId" ? (
                 <CheckIcon size={14} className="text-emerald-500" />
@@ -420,16 +420,10 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           </div>
         </div>
 
-        {/* Technical Split Status Block */}
-        <div className="flex items-center gap-3">
-          <div className={`flex items-center border ${statusConfig.borderColor} rounded-lg overflow-hidden bg-neutral-50/80 dark:bg-neutral-900/80 font-mono shadow-2xs`}>
-            <span className="px-2.5 py-1.5 bg-neutral-100 dark:bg-neutral-800/80 text-[10px] font-bold tracking-wider text-neutral-500 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-800 uppercase">
-              STATUS
-            </span>
-            <span className={`px-3 py-1.5 font-bold text-xs tracking-wider uppercase ${statusConfig.textColor}`}>
-              {t(`status.${data.status}`)}
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`rounded-lg border ${statusConfig.borderColor} bg-neutral-50/80 px-3 py-1.5 text-xs font-semibold dark:bg-neutral-900/80 ${statusConfig.textColor}`}>
+            {statusConfig.label}
+          </span>
 
           {actionSlot}
 
@@ -438,6 +432,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               onClick={onRefresh}
               className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-pointer"
               title={t("common.refresh")}
+              aria-label={t("common.refresh")}
             >
               <RefreshIcon size={14} />
             </button>
@@ -447,31 +442,46 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
 
       {bannerSlot}
 
-      {/* Preview-only finalize outcome; the browser clock never authorizes a transaction. */}
+      {/* The amount is the primary reading; preview and chain provenance stay in the banner. */}
+      <section aria-label={t("metrics.operation_amount")} className={styles.amountCard}>
+        <p className={styles.amountLabel}>
+          {t("metrics.operation_amount")}
+        </p>
+        {data.amount ? (
+          <div className={styles.amountValue} title={data.amount}>
+            <span className={styles.amountWhole}>
+              {displayAmount}
+            </span>
+            {displayFraction && <span className={styles.amountFraction}>.{displayFraction}</span>}
+            {data.asset && <span className={styles.amountAsset}>{data.asset}</span>}
+          </div>
+        ) : (
+          <p className={styles.amountUnavailable}>{t("alerts.unavailable")}</p>
+        )}
+        {data.source === "onchain" && (
+          <p className={styles.amountNote}>{t("metrics.contract_amount_raw")}</p>
+        )}
+      </section>
+
+      {/* Preview-only settlement; the browser clock never authorizes a transaction. */}
       {finalizeOutcome && !isTerminal && (
-        <div className="p-3 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shadow-xs">
+        <div className="flex items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+            <div className="shrink-0 rounded-md bg-amber-500/20 p-1.5 text-amber-700 dark:text-amber-300">
               <ClockIcon size={16} />
             </div>
-            <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
-              {t("alerts.finalize_expired", { outcome: finalizeOutcome })}
-            </p>
+            <p>{t("alerts.finalize_expired", { outcome: t(`status.${finalizeOutcome}`) })}</p>
           </div>
-          <span className="shrink-0 px-2.5 py-1 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200 font-bold text-[10px] tracking-wider uppercase border border-amber-500/30">
-            {t("alerts.universal_permission")}
-          </span>
         </div>
       )}
 
-      {/* 1. Lifecycle Timeline / Progression Stepper */}
+      {/* Lifecycle progress */}
       <div className="p-4 sm:p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs font-mono">
         <div className="flex items-center justify-between mb-3 pb-2 border-b border-neutral-100 dark:border-neutral-800/60">
-          <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest flex items-center gap-1.5">
-            <ShieldLockIcon size={13} className="text-teal-600 dark:text-teal-400" />
-            LIFECYCLE TIMELINE // PROGRESIÓN CONTRACTUAL
-          </span>
-          <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">
+          <h2 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+            {t("lifecycle.title")}
+          </h2>
+          <span className="text-xs text-neutral-600 dark:text-neutral-300 font-medium">
             {t("lifecycle.step_counter", { current: currentStepIndex + 1, total: 6 })}
           </span>
         </div>
@@ -485,7 +495,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             return (
               <div
                 key={step.id}
-                className={`relative p-2.5 rounded-lg border transition-all flex flex-col justify-between ${
+                className={`relative min-h-24 p-3 rounded-lg border transition-colors flex flex-col justify-between ${
                   isCurrent
                     ? isAlert
                       ? "border-rose-500/60 bg-rose-500/10 text-rose-900 dark:text-rose-200 ring-1 ring-rose-500/30 shadow-xs"
@@ -503,20 +513,12 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                     <span className="h-4 w-4 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-[10px]">
                       <CheckIcon size={10} />
                     </span>
-                  ) : isCurrent ? (
-                    <span
-                      className={`h-2 w-2 rounded-full ${
-                        isAlert ? "bg-rose-500 animate-pulse" : "bg-teal-500 animate-pulse"
-                      }`}
-                    />
-                  ) : (
-                    <span className="h-1.5 w-1.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                  )}
+                  ) : null}
                 </div>
 
                 <div>
                   <span
-                    className={`block font-bold text-[11px] tracking-wider uppercase truncate ${
+                    className={`block font-bold text-[11px] leading-snug ${
                       isCurrent
                         ? isAlert
                           ? "text-rose-700 dark:text-rose-400"
@@ -528,7 +530,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   >
                     {t(`lifecycle.step_${idx + 1}.label`)}
                   </span>
-                  <span className="block text-[9px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+                  <span className="block text-[10px] leading-snug text-neutral-600 dark:text-neutral-300 mt-1">
                     {t(`lifecycle.step_${idx + 1}.sublabel`)}
                   </span>
                 </div>
@@ -545,7 +547,6 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           currentTime={currentTime}
           deadlineDiffSeconds={deadlineDiffSeconds}
           fallbackBpsLabel={fallbackBpsLabel}
-          onCreateEscrow={onCreateEscrow}
         />
       )}
 
@@ -565,46 +566,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
         <ObserverPanel />
       )}
 
-      {viewerRole === null && (
-        <div className="p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/70 text-neutral-600 dark:text-neutral-400 font-mono text-xs">
-          {t("roles.disconnected.banner")}
-        </div>
-      )}
-
-      {/* Primary Metrics: Amount Hero & Current Turn */}
-      <div className="space-y-4">
-        {/* Metric 1: Amount Hero */}
-        <div className="p-6 sm:p-8 rounded-2xl border border-neutral-200/90 dark:border-neutral-800/90 bg-neutral-50/50 dark:bg-neutral-900/40 shadow-xs flex flex-col justify-between min-w-0">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-mono">
-              {t(data.source === "onchain" ? "metrics.contract_amount_raw" : "metrics.funds_under_custody")}
-            </span>
-            {data.asset && <span className="text-[11px] font-mono text-teal-700 dark:text-teal-300 font-bold border border-teal-500/30 bg-teal-500/10 px-2.5 py-0.5 rounded-full shrink-0">
-              {data.asset} · Stellar Testnet
-            </span>}
-          </div>
-
-          {(() => {
-            const [intPart, decPart] = (data.amount || t("alerts.unavailable")).split(".");
-            return (
-              <div className="my-2 flex items-baseline gap-1.5 font-mono flex-wrap min-w-0">
-                <span className={`${data.amount ? "text-5xl sm:text-6xl md:text-7xl" : "text-base sm:text-lg"} font-extrabold tracking-tight text-neutral-950 dark:text-white break-words`}>
-                  {intPart}
-                </span>
-                {decPart !== undefined && (
-                  <span className="text-2xl sm:text-3xl md:text-4xl font-semibold text-neutral-400 dark:text-neutral-500 shrink-0">
-                    .{decPart}
-                  </span>
-                )}
-                {data.asset && <span className="text-xl sm:text-2xl md:text-3xl font-mono font-bold text-teal-600 dark:text-teal-400 ml-2 shrink-0">
-                  {data.asset}
-                </span>}
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Metric 2: Active Actor */}
+      {/* Current turn */}
+      <div>
         <div className="p-4 sm:p-5 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/60 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 shrink-0">
@@ -619,12 +582,6 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               </h4>
             </div>
           </div>
-          {!isTerminal && (
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-full uppercase shrink-0">
-              <span className="h-1.5 w-1.5 rounded-full bg-teal-500 animate-pulse" />
-              {t("metrics.in_progress")}
-            </span>
-          )}
         </div>
       </div>
 
@@ -644,19 +601,16 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   className="text-sm font-semibold mt-0.5 text-neutral-900 dark:text-neutral-100 font-mono"
                   suppressHydrationWarning
                 >
-                  {currentTime > 0
-                    ? formatCountdown(deadlineDiffSeconds)
-                    : t("metrics.syncing_clock")}
+                   {currentTime > 0 ? deadlineText : t("metrics.syncing_clock")}
                 </p>
               </div>
             </div>
             <div className="sm:text-right">
-              <span className="text-[10px] text-neutral-500 font-mono block uppercase">
-                {t("metrics.timestamp_limit")}
-              </span>
-              <span className="text-xs font-mono font-medium text-neutral-700 dark:text-neutral-300">
-                {data.activeDeadline.timestamp}
-              </span>
+               {Number.isFinite(data.activeDeadline.timestamp) && (
+                 <time dateTime={new Date(data.activeDeadline.timestamp * 1000).toISOString()} className="text-xs font-mono font-medium text-neutral-700 dark:text-neutral-300">
+                   {new Intl.DateTimeFormat(language === "es" ? "es-PE" : "en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(data.activeDeadline.timestamp * 1000)} UTC
+                 </time>
+               )}
             </div>
           </div>
         </div>
@@ -671,9 +625,6 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               {t("participants.title")}
             </h3>
           </div>
-          <span className="text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
-            {t("participants.freighter_accounts")}
-          </span>
         </div>
 
         {/* Compact Minimized Participant Chips (Expands on Hover / Keyboard Focus) */}
@@ -681,8 +632,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           {[
             {
               key: "buyer",
-              label: "Buyer",
-              roleDesc: t("participants.buyer_desc"),
+              label: t("participants.buyer_desc"),
               address: data.parties.buyer,
               icon: UserIcon,
               iconBg: "bg-blue-500/10 dark:bg-blue-500/20",
@@ -693,8 +643,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             },
             {
               key: "supplier",
-              label: "Supplier",
-              roleDesc: t("participants.supplier_desc"),
+              label: t("participants.supplier_desc"),
               address: data.parties.supplier,
               icon: PackageIcon,
               iconBg: "bg-amber-500/10 dark:bg-amber-500/20",
@@ -705,8 +654,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             },
             {
               key: "engine",
-              label: "Engine",
-              roleDesc: t("participants.engine_desc"),
+              label: t("participants.engine_desc"),
               address: data.parties.engine,
               icon: CpuIcon,
               iconBg: "bg-purple-500/10 dark:bg-purple-500/20",
@@ -717,8 +665,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             },
             {
               key: "resolver",
-              label: "Resolver",
-              roleDesc: t("participants.resolver_desc"),
+              label: t("participants.resolver_desc"),
               address: data.parties.resolver,
               icon: ScaleIcon,
               iconBg: "bg-teal-500/10 dark:bg-teal-500/20",
@@ -729,15 +676,16 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
             },
           ].map((p) => {
             const isCopied = copiedKey === p.key;
+            const hasAddress = Boolean(p.address);
             return (
               <div
                 key={p.key}
-                tabIndex={0}
-                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 ${p.hoverBg} hover:shadow-xs dark:hover:shadow-neutral-950/50 transition-all duration-300 ease-out cursor-pointer select-none ${p.hoverBorder}`}
-                title={`${p.label} (${p.roleDesc}): ${p.address}`}
-                onClick={() => handleCopy(p.address, p.key)}
+                tabIndex={hasAddress ? 0 : -1}
+                className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 transition-colors duration-200 select-none ${hasAddress ? `${p.hoverBg} cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 ${p.hoverBorder}` : "cursor-default"}`}
+                title={`${p.label}: ${p.address || t("alerts.unavailable")}`}
+                onClick={() => hasAddress && handleCopy(p.address, p.key)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if (hasAddress && (e.key === "Enter" || e.key === " ")) {
                     e.preventDefault();
                     handleCopy(p.address, p.key);
                   }
@@ -755,6 +703,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                   <span className="text-xs font-bold text-neutral-800 dark:text-neutral-100 tracking-tight">
                     {p.label}
                   </span>
+                  {!hasAddress && <span className="text-[10px] text-neutral-600 dark:text-neutral-400">{t("alerts.unavailable")}</span>}
                   {p.isCurrentViewer && (
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30">
                       {t("common.you")}
@@ -763,7 +712,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                 </div>
 
                 {/* Animated Expandable Address & Copy Button (Expands on Hover / Keyboard Focus) */}
-                <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
+                {hasAddress && <div className="max-w-0 opacity-0 overflow-hidden group-hover:max-w-[220px] group-hover:opacity-100 group-focus-within:max-w-[220px] group-focus-within:opacity-100 transition-all duration-300 ease-in-out flex items-center gap-1.5 pl-0 group-hover:pl-2 group-focus-within:pl-2 border-l-0 group-hover:border-l group-focus-within:border-l border-neutral-200 dark:border-neutral-700">
                   {isCopied ? (
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 flex items-center gap-1">
                       <CheckIcon size={12} />
@@ -788,7 +737,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
                       </button>
                     </>
                   )}
-                </div>
+                </div>}
               </div>
             );
           })}
@@ -802,7 +751,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
           <p className="text-xs text-neutral-700 dark:text-neutral-300">
             {t("fallback.default_settlement")}{" "}
             <span className="font-bold text-teal-700 dark:text-teal-400">
-              {data.fallbackOutcome || t("alerts.unavailable")}
+              {data.fallbackOutcome ? t(`fallback.outcomes.${data.fallbackOutcome}`) : t("alerts.unavailable")}
             </span>
             {data.fallbackOutcome && <> ({data.fallbackOutcome === "SPLIT"
               ? fallbackBpsLabel
@@ -822,13 +771,12 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               {t("hashes.title")}
             </h3>
           </div>
-          <span className="text-[10px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
-            {t("hashes.bytes_label")}
-          </span>
         </div>
 
         {/* Compact Minimized Hash Chips (Expands on Hover / Keyboard Focus) */}
-        <div className="flex flex-wrap items-center justify-center gap-2.5">
+        {!hasRecordedHashes ? (
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">{t("hashes.none_recorded")}</p>
+        ) : <div className="flex flex-wrap items-center gap-2.5">
           {[
             {
               key: "evidenceHash",
@@ -874,7 +822,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               hoverBg: "hover:bg-rose-50/60 dark:hover:bg-rose-950/40",
               hoverBorder: "hover:border-rose-500/40 dark:hover:border-rose-400/40 focus-within:border-rose-500/40 dark:focus-within:border-rose-400/40",
             },
-          ].map((item) => {
+          ].filter((item) => Boolean(item.hash)).map((item) => {
             const hasHash = Boolean(item.hash);
             const isCopied = copiedKey === item.key;
 
@@ -953,7 +901,7 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
               </div>
             );
           })}
-        </div>
+        </div>}
       </div>
 
       {/* Explorer Link & Audit Note */}
