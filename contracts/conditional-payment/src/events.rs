@@ -70,6 +70,24 @@ pub struct Approved {
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeRaised {
+    #[topic]
+    pub by: Address,
+    pub reason_hash: BytesN<32>,
+    pub dispute_evidence_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Resolved {
+    #[topic]
+    pub by: Address,
+    pub outcome: FallbackOutcome,
+    pub split_bps: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Finalized {
     pub reason: FinalizeReason,
 }
