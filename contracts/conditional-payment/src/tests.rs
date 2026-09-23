@@ -1494,6 +1494,126 @@ fn resolve_before_deadline_with_split_validation() {
 }
 
 #[test]
+fn resolve_by_non_resolver_rejected() {
+    // Auth estricto: solo resolver puede resolver, buyer/supplier/engine no.
+    let ctx = setup(false);
+    let reason = BytesN::from_array(&ctx.env, &[10u8; 32]);
+    let evidence = BytesN::from_array(&ctx.env, &[11u8; 32]);
+    let init = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "initialize",
+        args: (ctx.config(),).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let pull = transfer_sub(
+        &ctx.token,
+        ctx.buyer.clone(),
+        ctx.contract.clone(),
+        AMOUNT,
+        &ctx.env,
+    );
+    let fund = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "fund",
+        args: soroban_sdk::Vec::new(&ctx.env),
+        sub_invokes: &[pull],
+    };
+    let submit = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "submit_evidence",
+        args: (evidence_hash(&ctx.env),).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let attest = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "attest",
+        args: (AttestationOutcome::Pass, report_hash(&ctx.env)).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let dispute = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "raise_dispute",
+        args: (reason.clone(), evidence.clone()).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let resolve_buyer = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "resolve",
+        args: (FallbackOutcome::Refund, 0u32).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let resolve_supplier = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "resolve",
+        args: (FallbackOutcome::Release, 0u32).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let resolve_engine = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "resolve",
+        args: (FallbackOutcome::Split, 5000u32).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let mint = MockAuthInvoke {
+        contract: &ctx.token,
+        fn_name: "mint",
+        args: (ctx.buyer.clone(), AMOUNT).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    ctx.env.mock_auths(&[
+        MockAuth {
+            address: &ctx.token_admin,
+            invoke: &mint,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &init,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &fund,
+        },
+        MockAuth {
+            address: &ctx.supplier,
+            invoke: &submit,
+        },
+        MockAuth {
+            address: &ctx.engine,
+            invoke: &attest,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &dispute,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &resolve_buyer,
+        },
+        MockAuth {
+            address: &ctx.supplier,
+            invoke: &resolve_supplier,
+        },
+        MockAuth {
+            address: &ctx.engine,
+            invoke: &resolve_engine,
+        },
+    ]);
+    ctx.sac().mint(&ctx.buyer, &AMOUNT);
+    ctx.initialize();
+    ctx.client().fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx.env));
+    ctx.client().raise_dispute(&reason, &evidence);
+    assert_eq!(ctx.client().state(), EscrowState::Disputed);
+    must_panic(|| ctx.client().resolve(&FallbackOutcome::Refund, &0));
+    must_panic(|| ctx.client().resolve(&FallbackOutcome::Release, &0));
+    must_panic(|| ctx.client().resolve(&FallbackOutcome::Split, &5000));
+    assert_eq!(ctx.client().state(), EscrowState::Disputed);
+    assert_eq!(ctx.token_balance(&ctx.contract), AMOUNT);
+}
+
+#[test]
 fn finalize_disputed_fallback_and_double_settlement_rejected() {
     let ctx = setup(true);
     let mut cfg = ctx.config();
