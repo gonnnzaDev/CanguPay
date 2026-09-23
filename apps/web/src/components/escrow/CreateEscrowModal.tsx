@@ -9,6 +9,7 @@ import {
 } from "@/components/icons";
 import { FallbackOutcome } from "@/types/escrow";
 import { useLanguage } from "@/providers/LanguageProvider";
+import { StrKey } from "@stellar/stellar-sdk";
 
 interface CreateEscrowModalProps {
   isOpen: boolean;
@@ -26,11 +27,10 @@ interface CreateEscrowModalProps {
   }) => void;
 }
 
-function isValidStellarAddress(addr: string): boolean {
+function isValidContractId(addr: string): boolean {
   if (!addr) return false;
-  const trimmed = addr.trim();
-  // Valid Stellar Public Key starts with 'G', uppercase alphanumeric, typically 56 chars (supports >=40 for dev keys)
-  return trimmed.startsWith("G") && (trimmed.length === 56 || trimmed.length >= 40) && /^[A-Z0-9]+$/.test(trimmed);
+  const t = addr.trim();
+  return StrKey.isValidContract(t);
 }
 
 export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
@@ -69,24 +69,27 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
   // Validation
   const errors: string[] = [];
 
-  if (!isValidStellarAddress(buyer)) {
-    errors.push("Comprador: Dirección pública inválida (debe iniciar con 'G' y contener caracteres válidos).");
+  if (!StrKey.isValidEd25519PublicKey(buyer.trim())) {
+    errors.push("Comprador: G... inválido (StrKey checksum).");
   }
-  if (!isValidStellarAddress(supplier)) {
-    errors.push("Proveedor: Dirección pública inválida (debe iniciar con 'G' y contener caracteres válidos).");
+  if (!StrKey.isValidEd25519PublicKey(supplier.trim())) {
+    errors.push("Proveedor: G... inválido (StrKey checksum).");
   }
-  if (!isValidStellarAddress(resolver)) {
-    errors.push("Árbitro: Dirección pública inválida (debe iniciar con 'G' y contener caracteres válidos).");
+  if (!StrKey.isValidEd25519PublicKey(resolver.trim())) {
+    errors.push("Árbitro: G... inválido (StrKey checksum).");
   }
-  if (!isValidStellarAddress(engine)) {
-    errors.push("Motor: Dirección pública inválida (debe iniciar con 'G' y contener caracteres válidos).");
+  if (!StrKey.isValidEd25519PublicKey(engine.trim())) {
+    errors.push("Motor: G... inválido (StrKey checksum).");
+  }
+  if (token && !isValidContractId(token) && !StrKey.isValidEd25519PublicKey(token.trim())) {
+    errors.push("Token: C... (contrato) o G... inválido.");
   }
 
-  // Parties distinct
-  const partiesList = [buyer.trim(), supplier.trim(), resolver.trim()].filter(Boolean);
+  // Parties distinct: 4 roles deben ser distintos (buyer/supplier/engine/resolver) — 6 pares, reflejo del back src/lib.rs:95
+  const partiesList = [buyer.trim(), supplier.trim(), resolver.trim(), engine.trim()].filter(Boolean);
   const distinctParties = new Set(partiesList);
-  if (partiesList.length === 3 && distinctParties.size < 3) {
-    errors.push("Comprador, Proveedor y Árbitro deben ser cuentas distintas.");
+  if (partiesList.length === 4 && distinctParties.size < 4) {
+    errors.push("Comprador, Proveedor, Árbitro y Motor deben ser cuentas distintas (6 pares).");
   }
 
   const numericAmount = parseFloat(amount.replace(/,/g, ""));

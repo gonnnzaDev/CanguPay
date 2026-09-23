@@ -256,23 +256,45 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const signedRes = await signFreighterTransaction(xdr, {
+        const signedRes: unknown = await signFreighterTransaction(xdr, {
           networkPassphrase: TESTNET_PASSPHRASE,
         });
+
+        // Freighter puede devolver string directo o objeto con { signedTxXdr, signerAddress, error }
+        const asObj = signedRes as {
+          signedTxXdr?: string;
+          signerAddress?: string;
+          address?: string;
+          error?: string;
+        } | null;
+
+        if (asObj && typeof asObj === "object" && "error" in asObj && asObj.error) {
+          return { success: false, error: String(asObj.error) };
+        }
+
         const signedXdr =
           typeof signedRes === "string"
             ? signedRes
-            : (signedRes as { signedTxXdr?: string })?.signedTxXdr;
+            : asObj?.signedTxXdr;
 
-        return {
-          success: true,
-          signedXdr: signedXdr || xdr,
-        };
+        const signerAddress = asObj?.signerAddress || asObj?.address || null;
+
+        if (!signedXdr || typeof signedXdr !== "string" || signedXdr.trim() === "") {
+          return { success: false, error: "Firma vacía: Freighter no devolvió signedTxXdr." };
+        }
+
+        if (signerAddress && address && signerAddress.trim() !== address.trim()) {
+          return {
+            success: false,
+            error: `Firma rechazada: signerAddress (${signerAddress}) no coincide con la wallet conectada (${address}).`,
+          };
+        }
+
+        return { success: true, signedXdr };
       } catch (err: unknown) {
         return {
           success: false,
-          error:
-            err instanceof Error ? err.message : "Firma rechazada por el usuario en Freighter.",
+          error: err instanceof Error ? err.message : "Firma rechazada por el usuario en Freighter.",
         };
       }
     },

@@ -165,7 +165,8 @@ export function getAvailableActions(
   role: UserRole | null,
   status: EscrowStatus,
   canFinalize: boolean = false,
-  t?: (key: string, params?: Record<string, string | number>) => string
+  t?: (key: string, params?: Record<string, string | number>) => string,
+  fallbackOutcome?: FallbackOutcome | null
 ): EscrowAction[] {
   if (isTerminalStatus(status)) return [];
 
@@ -300,9 +301,30 @@ export function getAvailableActions(
     }
   }
 
-  // Permissionless finalize: available to ANY account (including observer)
-  // ONLY when the contract ledger indicates the deadline passed.
+  // Permissionless finalize: expectedOutcome dinámico según matriz state-machine.md:23
+  // FUNDED→REFUNDED, EVIDENCE_SUBMITTED→REFUNDED, ATTESTED_PASS→RELEASED,
+  // ATTESTED_FAIL→REFUNDED, DISPUTED→fallbackOutcome
   if (canFinalize) {
+    let outcome: EscrowStatus = "REFUNDED";
+    switch (status) {
+      case "FUNDED":
+        outcome = "REFUNDED";
+        break;
+      case "EVIDENCE_SUBMITTED":
+        outcome = "REFUNDED";
+        break;
+      case "ATTESTED_PASS":
+        outcome = "RELEASED";
+        break;
+      case "ATTESTED_FAIL":
+        outcome = "REFUNDED";
+        break;
+      case "DISPUTED":
+        outcome = (fallbackOutcome as EscrowStatus) || "REFUNDED";
+        break;
+      default:
+        outcome = "REFUNDED";
+    }
     actions.push({
       id: "finalize",
       labelKey: "actions.finalize",
@@ -310,7 +332,7 @@ export function getAvailableActions(
       label: tr("actions.finalize", "Ejecutar Finalize"),
       fullName: "Ejecución Vencimiento (Finalize)",
       variant: "secondary",
-      expectedOutcome: "RELEASED",
+      expectedOutcome: outcome,
       description: tr("actions.finalize_desc", "Acción permisionada por expiración del plazo contractual en ledger."),
     });
   }

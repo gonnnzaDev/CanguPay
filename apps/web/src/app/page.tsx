@@ -15,11 +15,13 @@ import { EscrowDetails } from "@/components/escrow/EscrowDetails";
 import { CreateEscrowModal } from "@/components/escrow/CreateEscrowModal";
 import {
   EscrowStatus,
+  FallbackOutcome,
   deriveWalletRole,
   getAvailableActions,
 } from "@/types/escrow";
 
 import { mockEscrows } from "@/dev/mockEscrow";
+import { fetchOnChainEscrow } from "@/lib/soroban";
 
 export default function Home() {
   const { t } = useLanguage();
@@ -29,6 +31,9 @@ export default function Home() {
   const [isEmpty, setIsEmpty] = useState<boolean>(false);
   const [isSimulatingExpired, setIsSimulatingExpired] = useState<boolean>(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
+  const [onChainState, setOnChainState] = useState<string | null>(null);
+  const [onChainConfig, setOnChainConfig] = useState<Record<string, unknown> | null>(null);
+  const [rpcError, setRpcError] = useState<string | null>(null);
 
   const {
     address,
@@ -38,19 +43,68 @@ export default function Home() {
     isFreighterInstalled,
   } = useWallet();
 
-  const handleRefresh = () => {
+  const contractId = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ID || "";
+
+  const handleRefresh = async () => {
     setIsLoading(true);
     setHasError(false);
     setIsEmpty(false);
+    setRpcError(null);
+    // Contract ID dinámico con fallback: currentData?.contractId || env var (si currentData ya tiene on-chain id)
+    const targetId = contractId;
+    if (targetId) {
+      try {
+        const res = await fetchOnChainEscrow(targetId);
+        if (res.error) {
+          setRpcError(res.error);
+          setHasError(true);
+        } else {
+          if (res.state) setOnChainState(res.state);
+          if (res.config) setOnChainConfig(res.config as Record<string, unknown>);
+          // si no hay error, seguimos mostrando mock hasta que RPC sea autoritativo
+        }
+      } catch (e) {
+        setRpcError(e instanceof Error ? e.message : String(e));
+        setHasError(true);
+      }
+    }
     setTimeout(() => {
       setIsLoading(false);
     }, 450);
   };
 
-  const currentData = isEmpty ? null : mockEscrows[activeScenario] || null;
+  // Derivar datos on-chain si están disponibles, sino mock (mantener indicador mock)
+  const isMock = !contractId || !onChainState || !onChainConfig;
+  const currentData = (() => {
+    if (isEmpty) return null;
+    if (!isMock && onChainState && onChainConfig) {
+      // Mapear config on-chain a EscrowDetailsData (parties desde config, status desde state)
+      const cfg = onChainConfig as unknown as {
+        buyer?: string;
+        supplier?: string;
+        resolver?: string;
+        engine?: string;
+        amount?: string | number;
+        fallbackOutcome?: string;
+      };
+      const parties = {
+        buyer: String(cfg.buyer || ""),
+        supplier: String(cfg.supplier || ""),
+        resolver: String(cfg.resolver || ""),
+        engine: String(cfg.engine || ""),
+      };
+      const status = (onChainState as EscrowStatus) || activeScenario;
+      // Usar mock como base visual pero sobreescribir parties/status on-chain
+      const base = mockEscrows[status] || mockEscrows[activeScenario];
+      const fallback = (cfg.fallbackOutcome as FallbackOutcome) || base.fallbackOutcome;
+      return base ? { ...base, parties, status, contractId, fallbackOutcome: fallback } : null;
+    }
+    return mockEscrows[activeScenario] || null;
+  })();
+
   const derivedRole = deriveWalletRole(address, currentData?.parties);
   const availableActions = currentData
-    ? getAvailableActions(derivedRole, currentData.status, isSimulatingExpired, t)
+    ? getAvailableActions(derivedRole, currentData.status, isSimulatingExpired, t, currentData.fallbackOutcome)
     : [];
 
   const handleActionClick = (actionId: string) => {
@@ -104,7 +158,7 @@ export default function Home() {
     </div>
   );
 
-  const bannerSlot = (
+  const bannerSlot = isMock ? (
     <div
       role="status"
       className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono"
@@ -114,6 +168,12 @@ export default function Home() {
         <span className="font-bold tracking-wider uppercase shrink-0">
           {t("alerts.mock_data_badge")}
         </span>
+        {rpcError && (
+          <span className="text-[10px] text-rose-700 dark:text-rose-300">RPC: {rpcError}</span>
+        )}
+        {!contractId && (
+          <span className="text-[10px] text-neutral-500">sin NEXT_PUBLIC_ESCROW_CONTRACT_ID — usando mockEscrows</span>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-2 shrink-0">
         {/* Simular Vencimiento Toggle */}
@@ -148,7 +208,7 @@ export default function Home() {
         </select>
       </div>
     </div>
-  );
+  ) : null;
 
   return (
     <div className="min-h-screen font-sans antialiased selection:bg-teal-500/20">
