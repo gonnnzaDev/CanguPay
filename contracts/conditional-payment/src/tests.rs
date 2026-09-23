@@ -44,6 +44,7 @@ struct TestContext {
     buyer: Address,
     supplier: Address,
     engine: Address,
+    resolver: Address,
 }
 
 fn setup(mock_all_auths: bool) -> TestContext {
@@ -58,6 +59,7 @@ fn setup(mock_all_auths: bool) -> TestContext {
     let buyer = Address::generate(&env);
     let supplier = Address::generate(&env);
     let engine = Address::generate(&env);
+    let resolver = Address::generate(&env);
     let contract = env.register(ConditionalPayment, ());
     TestContext {
         env,
@@ -67,6 +69,7 @@ fn setup(mock_all_auths: bool) -> TestContext {
         buyer,
         supplier,
         engine,
+        resolver,
     }
 }
 
@@ -101,6 +104,7 @@ impl TestContext {
             buyer: self.buyer.clone(),
             supplier: self.supplier.clone(),
             engine: self.engine.clone(),
+            resolver: self.resolver.clone(),
             token: self.token.clone(),
             amount: AMOUNT,
             submission_period: SUBMISSION_PERIOD,
@@ -161,6 +165,7 @@ fn happy_path_pass_releases_funds() {
             buyer: ctx.buyer.clone(),
             supplier: ctx.supplier.clone(),
             engine: ctx.engine.clone(),
+            resolver: ctx.resolver.clone(),
             token: ctx.token.clone(),
             amount: AMOUNT,
             submission_period: SUBMISSION_PERIOD,

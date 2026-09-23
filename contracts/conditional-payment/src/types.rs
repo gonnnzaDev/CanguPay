@@ -8,6 +8,7 @@ pub struct EscrowConfig {
     pub buyer: Address,
     pub supplier: Address,
     pub engine: Address,
+    pub resolver: Address,
     pub token: Address,
     pub amount: i128,
     pub submission_period: u64,

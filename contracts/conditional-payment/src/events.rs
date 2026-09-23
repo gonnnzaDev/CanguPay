@@ -18,6 +18,8 @@ pub struct EscrowCreated {
     #[topic]
     pub engine: Address,
     #[topic]
+    pub resolver: Address,
+    #[topic]
     pub token: Address,
     pub amount: i128,
     pub submission_period: u64,

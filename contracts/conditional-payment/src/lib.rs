@@ -90,9 +90,14 @@ impl ConditionalPayment {
                 }
             }
         }
+        // 6 pares: buyer/supplier/engine/resolver deben ser distintos.
+        // Address valida StrKey nativamente al deserializar XDR, no hace falta check manual.
         if config.buyer == config.supplier
             || config.buyer == config.engine
+            || config.buyer == config.resolver
             || config.supplier == config.engine
+            || config.supplier == config.resolver
+            || config.engine == config.resolver
         {
             panic_with_error!(&env, Error::InvalidState);
         }
@@ -103,10 +108,11 @@ impl ConditionalPayment {
             .set(&DataKey::State, &EscrowState::Created);
 
         EscrowCreated {
-            buyer: config.buyer,
-            supplier: config.supplier,
-            engine: config.engine,
-            token: config.token,
+            buyer: config.buyer.clone(),
+            supplier: config.supplier.clone(),
+            engine: config.engine.clone(),
+            resolver: config.resolver.clone(),
+            token: config.token.clone(),
             amount: config.amount,
             submission_period: config.submission_period,
             attestation_period: config.attestation_period,
