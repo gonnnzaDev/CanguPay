@@ -1,7 +1,16 @@
 [package]
 name = "conditional-payment"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
-# Contrato de pago condicional
-# Estructura base para pagos con condiciones en CanguPay
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+testutils = ["soroban-sdk/testutils"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

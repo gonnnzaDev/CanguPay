@@ -12,3 +12,4 @@
 *.pem
 *.key
 *.seed
+contracts/conditional-payment/test_snapshots/
