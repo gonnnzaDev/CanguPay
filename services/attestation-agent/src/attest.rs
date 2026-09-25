@@ -108,7 +108,15 @@ pub fn hash_bytes(hex_hash: &str) -> [u8; 32] {
 /// `attest(outcome: u32, report_hash: BytesN<32>)` son dos entradas y no una sola
 /// lista: envolverlas en un `Vec` haria que el host no encontrara el simbolo.
 pub fn attest_args(outcome: AttestationOutcome, report_hash: &[u8; 32]) -> Result<Vec<ScVal>> {
-    let outcome_val = ScVal::U32(outcome.as_u32());
+    // El enum llega como `Vec([Symbol(nombre)])`, no como el indice numerico: el host
+    // decodifica esa forma y un U32 deixa la llamada sin convertir, con lo que el
+    // contrato hace trap al leer `outcome`.
+    let outcome_val = ScVal::Vec(Some(xdr::ScVec(vec_one(ScVal::Symbol(
+        outcome
+            .name()
+            .try_into()
+            .map_err(|_| AgentError::Xdr("nombre de outcome invalido".into()))?,
+    ))?)));
     let hash_val = ScVal::Bytes(xdr::ScBytes(
         xdr::BytesM::try_from(report_hash.to_vec())
             .map_err(|e| AgentError::Xdr(format!("report_hash no cabe en BytesM: {e}")))?,
@@ -299,6 +307,13 @@ pub fn sign_envelope(
                     creds.signature = sig;
                     found = true;
                 }
+                // La cuenta que exige `auth` es la propia fuente de la transaccion:
+                // Soroban la representa con credenciales `SourceAccount`, que no
+                // llevan firma propia porque la firma del sobre ya la respalda. Buscar
+                // solo `Address` haria pensar que la simulacion no devolvio nada.
+                xdr::SorobanCredentials::SourceAccount => {
+                    found = true;
+                }
                 _ => continue,
             }
         }
@@ -311,7 +326,12 @@ pub fn sign_envelope(
         )));
     }
 
-    let hint = xdr::SignatureHint(signer.public_key_bytes()[..4].try_into().unwrap());
+    // La red indexa la firma por el hint para saber que clave buscar. En el nodo de
+    // protocolo 28 el hint son los **ultimos** 4 bytes de la pubkey: poner los
+    // primeros hace que la red busque una clave que no existe y responda
+    // `TxBadAuth` aunque la firma sea correcta.
+    let pk = signer.public_key_bytes();
+    let hint = xdr::SignatureHint(pk[pk.len() - 4..].try_into().unwrap());
     let decorated = xdr::DecoratedSignature {
         hint,
         signature: xdr::Signature(
@@ -717,13 +737,40 @@ mod tests {
         assert_eq!(plan.expected_state_after, EscrowState::AttestedFail);
     }
 
+    /// El outcome viaja como `Vec([Symbol(nombre)])`, la forma que acepta el host.
+    fn assert_outcome_arg(arg: &ScVal, expected: AttestationOutcome) {
+        let ScVal::Vec(Some(items)) = arg else {
+            panic!("el outcome deberia ser un Vec, es {arg:?}")
+        };
+        let Some(ScVal::Symbol(name)) = items.first() else {
+            panic!("el outcome deberia empezar por Symbol")
+        };
+        assert_eq!(name.0.as_slice(), expected.name().as_bytes());
+    }
+
     #[test]
     fn attest_args_match_the_contract_signature() {
         let args = attest_args(AttestationOutcome::Fail, &[7u8; 32]).unwrap();
         // Dos ScVal sueltos, no una lista: el host los recibe por posicion.
         assert_eq!(args.len(), 2);
-        assert_eq!(args[0], ScVal::U32(1));
+        // El enum se manda por nombre, no por indice numerico. Con un U32 el host no
+        // lo convierte y el contrato hace trap al leer `outcome`.
+        assert_outcome_arg(&args[0], AttestationOutcome::Fail);
         assert_eq!(bytes_n_from_scval(&args[1]).unwrap(), [7u8; 32]);
+    }
+
+    #[test]
+    fn outcome_arg_is_never_a_bare_u32() {
+        // Fijado porque la forma numerica parece funcionar en pruebas y solo falla en
+        // la red, que es donde se quedo sin descubrir durante horas.
+        for outcome in [AttestationOutcome::Pass, AttestationOutcome::Fail] {
+            let args = attest_args(outcome, &[1u8; 32]).unwrap();
+            assert!(
+                !matches!(args[0], ScVal::U32(_)),
+                "un U32 como outcome hace trap en el contrato"
+            );
+            assert_outcome_arg(&args[0], outcome);
+        }
     }
 
     #[test]
@@ -855,7 +902,7 @@ mod tests {
         assert_eq!(args.function_name.to_string(), "attest");
         assert_eq!(args.contract_address, contract());
         assert_eq!(args.args.len(), 2);
-        assert_eq!(args.args.first(), Some(&ScVal::U32(1)));
+        assert_outcome_arg(args.args.first().unwrap(), AttestationOutcome::Fail);
         assert_eq!(
             bytes_n_from_scval(args.args.last().unwrap()).unwrap(),
             [9u8; 32]
@@ -903,6 +950,42 @@ mod tests {
     }
 
     #[test]
+    fn signature_hint_is_the_tail_of_the_public_key() {
+        // Fijado porque la red no avisa de que el hint este mal: solo devuelve
+        // TxBadAuth, que no dice si el problema es la firma o como se busco la clave.
+        let s = signer();
+        let mut tx = build_invoke_tx(
+            &xdr::ScAddress::Contract(xdr::ContractId(xdr::Hash([3u8; 32]))),
+            &xdr::MuxedAccount::Ed25519(s.public_key_bytes().into()),
+            1,
+            AttestationOutcome::Pass,
+            &[9u8; 32],
+        )
+        .unwrap();
+        let mut op = tx.operations.first().unwrap().clone();
+        let xdr::OperationBody::InvokeHostFunction(invoke) = &mut op.body else {
+            panic!()
+        };
+        invoke.auth =
+            xdr::VecM::try_from(vec![auth_entry(creds_v2(s.address().parse().unwrap()))]).unwrap();
+        tx.operations = xdr::VecM::try_from(vec![op]).unwrap();
+
+        let signed =
+            sign_envelope(&s, &tx, &network_id_hash(TESTNET_PASSPHRASE), ATTEST_FN).unwrap();
+        let xdr::TransactionEnvelope::Tx(v1) = &signed else {
+            panic!("esperaba V1")
+        };
+        let pk = s.public_key_bytes();
+        let hint = v1.signatures.first().unwrap().hint.0;
+        assert_eq!(hint, pk[pk.len() - 4..]);
+        assert_ne!(
+            hint,
+            pk[..4],
+            "el hint no debe ser el prefijo: eso fue lo que rompia el envio"
+        );
+    }
+
+    #[test]
     fn sign_envelope_signs_the_payload_the_network_will_hash() {
         use ed25519_dalek::Verifier;
         use sha2::{Digest, Sha256};
@@ -927,8 +1010,11 @@ mod tests {
         };
         assert_eq!(v1.signatures.len(), 1);
         let decorated = v1.signatures.first().unwrap();
-        // El hint es el prefijo de 4 bytes de la pubkey, como espera el protocolo.
-        assert_eq!(decorated.hint.0, s.public_key_bytes()[..4]);
+        // El hint son los ultimos 4 bytes de la pubkey. Es lo que usa el nodo de
+        // protocolo 28 para indexar la firma: con el prefijo la red busca una clave
+        // que no existe y responde TxBadAuth aunque la firma sea valida.
+        let pk = s.public_key_bytes();
+        assert_eq!(decorated.hint.0, pk[pk.len() - 4..]);
 
         // La firma cubre el payload de la transaccion **con la firma todavia vacia**:
         // ese es el estado en el que la red la verifica.

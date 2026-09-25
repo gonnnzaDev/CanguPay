@@ -100,37 +100,39 @@ el payload de la transacción, lo que la red rechaza con `txBAD_AUTH`. Ahora cad
 se firma con su payload, con tests que comprueban que producen firmas distintas y que la
 v2 verifica contra el preimage correcto.
 
-### Causa del rechazo: XDR 27 contra un nodo en protocolo 28
+### Verificado en testnet
 
-El repositorio fija `stellar-xdr = "27"` y `soroban-sdk = "27.0.6"`. El nodo de testnet
-corre **protocolo 28**. Con `stellar` CLI v28.0.0 (`stellar-xdr 28.0.0`) el mismo
-despliegue se completa sin incidencias, lo que confirma que el nodo está bien y que el
-problema es el desajuste de versión del toolchain, no la lógica de firma.
+El agente firma y envia de verdad. Dos atestaciones suyas, con el `report_hash` que el
+motor calculo:
 
-Consecuencia práctica: el mismo contrato sí se puede desplegar y ejercitar en testnet
-con el CLI — así se verificó P0-04 de punta a punta — pero el **agente** no puede
-enviar su propia atestación hasta que se migre a XDR/SDK 28. Migrarlo no es trivial:
-cambia el formato de credenciales (CAP-71-02), que este agente ya firma de forma
-correcta para ambas variantes.
+| Caso | Contrato | tx |
+| --- | --- | --- |
+| PASS | `CCGZQCVPZPJLTTD4NSCL7MZWFH6PKFAAZCSGXCPZH7ZEB7T56L2WJ2OF` | `f7168ae3e3c0f4e7cf59bc66353f7d9f3e24510043144dcf4864b2f003e1976f` |
+| FAIL | `CCQ7XTWYMGKMTBPJ5UIJ764GDQX7ZE2HYSZ3EPW4XUELSC7755SPNJ7A` | `bb714f80fe2acc5f6b8192fd5ec106a90c3fada9f4102767a72619a12c9f872d` |
 
-Por eso **no** se publica ningún contract ID ni tx hash del agente: no existen. El comando de
-montaje queda listo y es reproducible:
+Antes de eso hubo que corregir cuatro cosas que ninguna prueba unitaria detecta, porque
+todas pasan en local y fallan contra la red:
 
-```bash
-# Despliega el token de prueba y el escrow, y deja el contrato en
-# EvidenceSubmitted listo para atestuar. Requiere CANGUPA_TESTNET_KEYS con
-# un archivo de claves fuera del repo.
-cargo build --release --target wasm32v1-none \
-    -p conditional-payment -p test-token
-cargo run --release -p attestation-agent --example testnet_setup -- \
-    <archivo-de-claves> pass
-```
+- **El enum se manda por nombre.** `AttestationOutcome` viaja como
+  `Vec([Symbol("Pass")])`. Mandarlo como `U32` con el indice parece correcto —el
+  contrato tiene ese enum— pero el host no lo convierte y el WASM hace
+  `UnreachableCodeReached`. El error de la red es un trap sin mensaje util.
+- **El `SignatureHint` son los ultimos 4 bytes de la pubkey.** Con el prefijo, que es
+  lo que decia la especificacion antigua, la red busca una clave que no existe y
+  responde `TxBadAuth` aunque la firma verifique perfectamente. Es el fallo mas caro
+  de esta lista: el mensaje no distingue "firma mala" de "no encuentro la clave".
+- **Los `struct` vuelven como `Map` con nombre**, no como `Vec` posicional, y los enums
+  como `Vec[Symbol]`. El decodificador los leia por indice, lo que ademas era frágil
+  ante un reordenamiento.
+- **Los errores de simulacion llegan en un campo `error` con HTTP 200.** Sin
+  comprobarlo, el sintoma era "no devolvio resultados", que no dice nada. Ese
+  enmascaramiento costo una hora de diagnostico .
 
-El token de `contracts/test-token` es **un token de prueba**, no CPUSD: existe porque en
-testnet no hay un SAC desplegado para una divisa de prueba y `fund()` necesita uno.
+Y el toolchain paso a `stellar-xdr 28` y `stellar-rpc-client 28` para hablar con un
+nodo en protocolo 28.
 
-El bundle se lee de disco. No hay cliente HTTP/IPFS: el hash en cadena se verifica contra
-el archivo local que se le pase.
+El token de los escrows de prueba es un contrato de prueba, **no CPUSD**: en testnet no
+hay un SAC desplegado para una divisa de prueba y `fund()` necesita uno.
 
 ## Estructura
 

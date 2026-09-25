@@ -179,7 +179,16 @@ Del flujo FAIL: `initialize` `5e393519310da89dcd2e4f5d80c075e6cda39ed220bd8e637f
 - [x] El hash del bundle presentado coincide con el procesado por el engine. El keeper y `attest` rechazan la firma si el hash local difiere del que está en cadena.
 - [x] Un FAIL señala qué campo falló sin inventar datos. `failed_fields` con ruta, estado, valor observado y esperado solo si existe en los datos.
 - [x] La clave del engine vive fuera del repo y no llega al frontend. `CANGUPA_ENGINE_SECRET`/`CANGUPA_ENGINE_KEYFILE`, con rechazo explícito de rutas dentro del repo.
-- [ ] Una invocación exitosa en testnet produce `Attested` y cambia el estado esperado. **Pendiente, con diagnóstico advance.** El intento de despliegue se hizo contra `soroban-testnet.stellar.org` (protocolo 28) y **no** llegó a completarse: las cinco cuentas se crearon y se fondearon con friendbot (10 000 XLM cada una, verificado leyendo la entrada del ledger), pero toda transacción enviada por esta herramienta se rechaza con `TxBadAuth` (`fee_charged: 100`, es decir en la primera comprobación), incluso un pago de 1 stroop a la propia cuenta. El payload de firma **no** es la causa: se comprobó que reproduce exactamente la firma que la propia red ya había aceptado en la transacción de friendbot. Tampoco la comisión (probada a 100, 100 000 y 1 000 000) ni la clave (la dirección derivada del secreto coincide con la cuenta fondeada, que no tiene firmantes ni umbrales adicionales). **Causa encontrada:** el toolchain del repositorio está fijado en `stellar-xdr = "27"` / `soroban-sdk = "27.0.6"` y el nodo corre **protocolo 28**. La misma operación que el tooling del repo rechaza con `TxBadAuth` se incluye sin problema con `stellar` CLI v28.0.0, que usa `stellar-xdr 28.0.0`. Queda pendiente migrar el agente a XDR/SDK 28 y reintentar; hasta entonces no se publica ningún contract ID ni tx hash del agente, porque no existen.
+- [x] Una invocación exitosa en testnet produce `Attested` y cambia el estado esperado. En testnet con el propio agente: PASS en `CCGZQCVPZPJLTTD4NSCL7MZWFH6PKFAAZCSGXCPZH7ZEB7T56L2WJ2OF` (tx `f7168ae3e3c0f4e7cf59bc66353f7d9f3e24510043144dcf4864b2f003e1976f`) y FAIL en `CCQ7XTWYMGKMTBPJ5UIJ764GDQX7ZE2HYSZ3EPW4XUELSC7755SPNJ7A` (tx `bb714f80fe2acc5f6b8192fd5ec106a90c3fada9f4102767a72619a12c9f872d`). En ambos el `report_hash` leido de la cadena coincide con el que el motor calculo y firmo.
+
+Llegar ahi exigio corregir cuatro cosas que solo se manifiestan contra la red, no en pruebas:
+
+1. El enum `AttestationOutcome` se manda como `Vec([Symbol(nombre)])`. Mandarlo como `U32` con el indice parece correcto y el contrato hace `UnreachableCodeReached`.
+2. El `SignatureHint` son los **ultimos** 4 bytes de la pubkey. Con el prefijo, la red busca una clave que no existe y responde `TxBadAuth` aunque la firma verifique.
+3. Los `struct` vuelven como `Map` por nombre y los enums como `Vec[Symbol]`. El decodificador los leia posicionalmente.
+4. Los errores de `simulateTransaction` llegan en un campo `error` con HTTP 200; sin mirarlo, el sintoma era "no devolvio resultados".
+
+Ademas, el toolchain paso a `stellar-xdr 28` y `stellar-rpc-client 28` para hablar con un nodo en protocolo 28.
 
 ### P0-08 — Inicializar web, red y wallet
 

@@ -49,8 +49,10 @@ impl EscrowSnapshot {
             "amount": self.config.amount,
             "attestation_period": self.config.attestation_period,
             "evidence_bundle_hash": self.evidence_bundle_hash.map(hex::encode),
+            "report_hash": self.report_hash.map(hex::encode),
             "attestation_deadline": self.attestation_deadline,
             "attestation_remaining": self.attestation_remaining(),
+            "correction_attempts": self.correction_attempts,
         })
     }
 }
@@ -228,6 +230,14 @@ pub enum AttestationOutcome {
 }
 
 impl AttestationOutcome {
+    /// Nombre del enum tal y como lo codifica Soroban.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pass => "Pass",
+            Self::Fail => "Fail",
+        }
+    }
+
     /// Discriminante del enum del contrato.
     pub fn as_u32(self) -> u32 {
         match self {
@@ -316,7 +326,8 @@ impl SorobanChain {
         outcome: AttestationOutcome,
         report_hash: &[u8; 32],
     ) -> Result<SubmitOutcome> {
-        let (hash, state_after) = self
+        // `attest()` no devuelve nada: la confirmacion es la relectura del contrato.
+        let (hash, _) = self
             .invoke_and_confirm(crate::attest::ATTEST_FN, |contract, source, seq| {
                 crate::attest::build_invoke_tx(contract, source, seq, outcome, report_hash)
             })
@@ -332,7 +343,7 @@ impl SorobanChain {
 
         let expected = crate::attest::expected_state_after(outcome);
         let after = self.snapshot_async().await?;
-        if after.state != expected || state_after != expected {
+        if after.state != expected {
             return Err(AgentError::InvalidState {
                 actual: after.state.to_string(),
                 operacion: format!("confirmar {ATTEST_FN} (tx {hash}, se esperaba {expected})"),
@@ -349,7 +360,7 @@ impl SorobanChain {
         }
         Ok(SubmitOutcome {
             hash: TxHash(hash.to_string()),
-            state_after,
+            state_after: expected,
         })
     }
 
@@ -362,11 +373,13 @@ impl SorobanChain {
     /// contrato responde `NotFinalizableYet`, ese error sube tal cual para que el
     /// keeper lo distinga de un fallo de red.
     pub async fn finalize_async(&self) -> Result<EscrowState> {
-        let (_hash, state_after) = self
+        let (_hash, returned) = self
             .invoke_and_confirm(crate::attest::FINALIZE_FN, |contract, source, seq| {
                 crate::attest::build_finalize_tx(contract, source, seq)
             })
             .await?;
+        let state_after = returned
+            .ok_or_else(|| AgentError::Xdr("finalize() no devolvio el estado resultante".into()))?;
         // La respuesta inmediata se contrasta con una relectura: si no coinciden,
         // alguien toco el contrato entre medias y no se afirma un estado sin fundamento.
         let after = self.snapshot_async().await?;
@@ -391,7 +404,7 @@ impl SorobanChain {
         &self,
         fn_name: &str,
         build: F,
-    ) -> Result<(xdr::Hash, EscrowState)>
+    ) -> Result<(xdr::Hash, Option<EscrowState>)>
     where
         F: Fn(&xdr::ScAddress, &xdr::MuxedAccount, i64) -> Result<xdr::Transaction>,
     {
@@ -431,8 +444,11 @@ impl SorobanChain {
             )
             .await
             .map_err(|e| AgentError::Network(format!("simulateTransaction({fn_name}): {e}")))?;
+        check_simulation_error(&simulation, fn_name)?;
         let data = simulation.transaction_data().map_err(|e| {
-            AgentError::Network(format!("la simulacion no devolvio sorobanData: {e}"))
+            AgentError::Network(format!(
+                "la simulacion de {fn_name} no devolvio sorobanData: {e}"
+            ))
         })?;
         // Las credenciales llegan aparte de `sorobanData` y van en la operacion.
         let auth = simulation
@@ -446,10 +462,44 @@ impl SorobanChain {
         let network_id = crate::attest::network_id_hash(&self.network_passphrase);
         let envelope = crate::attest::sign_envelope(&signer, &tx, &network_id, fn_name)?;
 
-        let hash = client
-            .send_transaction(&envelope)
-            .await
-            .map_err(|e| AgentError::Network(format!("sendTransaction({fn_name}): {e}")))?;
+        // El RPC sirve la entrada de cuenta con una secuencia anterior a la que
+        // espera la red, asi que la transaccion se rechaza con `TxBadSeq` aunque la
+        // firma sea correcta. Se relee la cuenta y se reintenta una vez con la
+        // siguiente; el error de la red se conserva si tambien asi falla.
+        let hash = match client.send_transaction(&envelope).await {
+            Ok(h) => h,
+            Err(first) if format!("{first}").contains("TxBadSeq") => {
+                let fresh = client
+                    .get_account(&signer.address())
+                    .await
+                    .map_err(|e| AgentError::Network(format!("{fn_name}: relectura: {e}")))?;
+                let mut retry = tx.clone();
+                retry.seq_num = xdr::SequenceNumber(fresh.seq_num.0 + 1);
+                client
+                    .send_transaction(&crate::attest::sign_envelope(
+                        &signer,
+                        &retry,
+                        &network_id,
+                        fn_name,
+                    )?)
+                    .await
+                    .map_err(|second| {
+                        let dump = crate::attest::sign_envelope(&signer, &retry, &network_id, fn_name)
+                            .ok()
+                            .and_then(|e| envelope_to_base64(&e).ok())
+                            .unwrap_or_default();
+                        AgentError::Network(format!(
+                            "sendTransaction({fn_name}): {second} (tras reintentar con seq {}) | ENV={dump}",
+                            fresh.seq_num.0 + 1
+                        ))
+                    })?
+            }
+            Err(e) => {
+                return Err(AgentError::Network(format!(
+                    "sendTransaction({fn_name}): {e}"
+                )))
+            }
+        };
         let response = client
             .get_transaction_polling(&hash, None)
             .await
@@ -460,8 +510,8 @@ impl SorobanChain {
                 response.status
             )));
         }
-        let state_after = state_from_simulation(&simulation)?;
-        Ok((hash, state_after))
+        let returned = state_from_simulation(&simulation)?;
+        Ok((hash, returned))
     }
 
     /// Recupera los eventos de contrato de una transaccion ya incluida.
@@ -563,6 +613,7 @@ impl SorobanChain {
             .simulate_transaction_envelope(&crate::attest::unsigned_envelope(&tx), None)
             .await
             .map_err(|e| AgentError::Network(format!("simulateTransaction({SNAPSHOT_FN}): {e}")))?;
+        check_simulation_error(&simulation, SNAPSHOT_FN)?;
         let result = simulation
             .results()
             .map_err(|e| AgentError::Network(format!("resultado de {SNAPSHOT_FN}: {e}")))?
@@ -600,6 +651,24 @@ impl SorobanChain {
     }
 }
 
+/// Convierte un error de simulacion del RPC en un [`AgentError`] legible.
+///
+/// El RPC responde `200 OK` con un campo `error` cuando la simulacion falla, y sin
+/// `sorobanData`. Si eso no se comprueba, el error real se pierde y el sintoma aparece
+/// como "no devolvio resultados", que no dice nada. Este fallo ya costo una hora de
+/// diagnostico, asi que el error de la red se propaga tal cual.
+pub(crate) fn check_simulation_error(
+    simulation: &stellar_rpc_client::SimulateTransactionResponse,
+    fn_name: &str,
+) -> Result<()> {
+    match &simulation.error {
+        Some(err) => Err(AgentError::Network(format!(
+            "la simulacion de {fn_name} fallo en la red: {err}"
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// Convierte `Err` del cliente RPC en [`AgentError::Network`].
 pub(crate) fn rpc_error(op: &str, e: &stellar_rpc_client::Error) -> AgentError {
     AgentError::Network(format!("{op}: {e}"))
@@ -613,7 +682,7 @@ pub(crate) fn rpc_error(op: &str, e: &stellar_rpc_client::Error) -> AgentError {
 /// para cuando la transaccion se incluya.
 pub(crate) fn state_from_simulation(
     simulation: &stellar_rpc_client::SimulateTransactionResponse,
-) -> Result<EscrowState> {
+) -> Result<Option<EscrowState>> {
     let result = simulation
         .results()
         .map_err(|e| AgentError::Network(format!("resultado de la simulacion: {e}")))?
@@ -621,8 +690,9 @@ pub(crate) fn state_from_simulation(
         .next()
         .ok_or_else(|| AgentError::Network("la simulacion no devolvio resultados".into()))?;
     match &result.xdr {
-        ScVal::U32(v) => Ok(EscrowState::from_u32(*v)),
-        ScVal::Void => Err(AgentError::Network("la funcion no devolvio estado".into())),
+        ScVal::U32(v) => Ok(Some(EscrowState::from_u32(*v))),
+        // Una funcion que no devuelve nada es valido; quien llama decide si lo esperaba.
+        ScVal::Void => Ok(None),
         other => Err(AgentError::Xdr(format!("estado inesperado: {other:?}"))),
     }
 }
@@ -663,88 +733,62 @@ pub struct ContractSnapshot {
     pub ledger_timestamp: u64,
 }
 
-/// Indices de los campos de `EscrowSnapshot` en el `types.rs` del contrato.
+/// Lee el `ScVal` que devuelve `snapshot()`.
 ///
-/// Un `#[contracttype] struct` se serializa como `ScVal::Vec` con los campos en el orden
-/// de declaracion. Aqui si hay posiciones, pero **del tipo que el contrato declara y
-/// publica**: si el contrato reordena sus campos, el propio contrato y este agente
-/// compilan juntos, y el test `wrong_field_count_is_an_explicit_error` mas la validacion
-/// de longitud hacen que el desajuste sea un error explicito. Lo que ya no se depende es
-/// del almacenamiento privado ni de las `DataKey`.
-const F_STATE: usize = 0;
-const F_CONFIG: usize = 1;
-const F_EVIDENCE_HASH: usize = 2;
-const F_REPORT_HASH: usize = 3;
-const F_FUNDED_AT: usize = 4;
-const F_SUBMISSION_DEADLINE: usize = 5;
-const F_ATTESTATION_DEADLINE: usize = 6;
-const F_ATTESTED_AT: usize = 7;
-const F_OBJECTION_DEADLINE: usize = 8;
-const F_CORRECTION_DEADLINE: usize = 9;
-const F_DISPUTED_AT: usize = 10;
-const F_RESOLUTION_DEADLINE: usize = 11;
-const F_CORRECTION_ATTEMPTS: usize = 12;
-const F_DISPUTE_REASON_HASH: usize = 13;
-const F_DISPUTE_EVIDENCE_HASH: usize = 14;
-const F_LEDGER_TIMESTAMP: usize = 15;
-/// Cantidad de campos de `EscrowSnapshot`; si cambia, la decodificacion debe cambiar.
-const SNAPSHOT_FIELDS: usize = 16;
-
-/// Decodifica el `ScVal` que devuelve `snapshot()`.
-///
-/// Cada campo se valida: un tipo inesperado es un error explicito, nunca un valor por
-/// defecto silencioso. `EscrowState::Unknown` si se conserva porque un enum nuevo en el
-/// contrato debe verse como desconocido y no confundirse con `Created`.
+/// El contrato devuelve sus `#[contracttype] struct` como un `Map` **con claves por
+/// nombre**, no como un `Vec` posicional. Leerlos por nombre es lo correcto: si el
+/// contrato reordena o inserta un campo, esta decodificacion sigue siendo valida y un
+/// `Vec` habria shiftsado todos los valores siguientes en silencio.
 pub fn decode_snapshot_scval(val: &ScVal) -> Result<ContractSnapshot> {
-    let ScVal::Vec(Some(items)) = val else {
-        return Err(AgentError::Xdr(format!(
-            "snapshot() deberia devolver un Vec, recibio {val:?}"
-        )));
+    let map = as_named_map(val, "snapshot()")?;
+    let config = match map.get("config") {
+        Some(v) => decode_config(v)?,
+        None => return Err(AgentError::Network("snapshot() sin config".into())),
     };
-    if items.len() != SNAPSHOT_FIELDS {
-        return Err(AgentError::Xdr(format!(
-            "snapshot() devolvio {} campos y el agente espera {SNAPSHOT_FIELDS}; \
-             el contrato cambio y el agente debe actualizarse",
-            items.len()
-        )));
-    }
-    let get = |i: usize| -> &ScVal { &items[i] };
+    let state = match map.get("state") {
+        Some(v) => decode_state(v)?,
+        None => return Err(AgentError::Network("snapshot() sin state".into())),
+    };
 
     let out = ContractSnapshot {
-        state: match get(F_STATE) {
-            ScVal::U32(v) => EscrowState::from_u32(*v),
-            other => return Err(AgentError::Xdr(format!("state no es U32: {other:?}"))),
-        },
-        config: decode_config(get(F_CONFIG))?,
-        evidence_bundle_hash: decode_bytes32_opt(get(F_EVIDENCE_HASH), "evidence_bundle_hash")?,
-        report_hash: decode_bytes32_opt(get(F_REPORT_HASH), "report_hash")?,
-        funded_at: decode_u64_opt(get(F_FUNDED_AT), "funded_at")?,
-        submission_deadline: decode_u64_opt(get(F_SUBMISSION_DEADLINE), "submission_deadline")?,
-        attestation_deadline: decode_u64_opt(get(F_ATTESTATION_DEADLINE), "attestation_deadline")?,
-        attested_at: decode_u64_opt(get(F_ATTESTED_AT), "attested_at")?,
-        objection_deadline: decode_u64_opt(get(F_OBJECTION_DEADLINE), "objection_deadline")?,
-        correction_deadline: decode_u64_opt(get(F_CORRECTION_DEADLINE), "correction_deadline")?,
-        disputed_at: decode_u64_opt(get(F_DISPUTED_AT), "disputed_at")?,
-        resolution_deadline: decode_u64_opt(get(F_RESOLUTION_DEADLINE), "resolution_deadline")?,
-        correction_attempts: match get(F_CORRECTION_ATTEMPTS) {
-            ScVal::U32(v) => *v,
-            other => {
+        state,
+        config,
+        evidence_bundle_hash: opt_hash(&map, "evidence_bundle_hash")?,
+        report_hash: opt_hash(&map, "report_hash")?,
+        funded_at: opt_u64(&map, "funded_at")?,
+        submission_deadline: opt_u64(&map, "submission_deadline")?,
+        attestation_deadline: opt_u64(&map, "attestation_deadline")?,
+        attested_at: opt_u64(&map, "attested_at")?,
+        objection_deadline: opt_u64(&map, "objection_deadline")?,
+        correction_deadline: opt_u64(&map, "correction_deadline")?,
+        disputed_at: opt_u64(&map, "disputed_at")?,
+        resolution_deadline: opt_u64(&map, "resolution_deadline")?,
+        correction_attempts: match map.get("correction_attempts") {
+            Some(ScVal::U32(v)) => *v,
+            Some(other) => {
                 return Err(AgentError::Xdr(format!(
                     "correction_attempts no es U32: {other:?}"
                 )))
             }
+            None => {
+                return Err(AgentError::Network(
+                    "snapshot() sin correction_attempts".into(),
+                ))
+            }
         },
-        dispute_reason_hash: decode_bytes32_opt(get(F_DISPUTE_REASON_HASH), "dispute_reason_hash")?,
-        dispute_evidence_hash: decode_bytes32_opt(
-            get(F_DISPUTE_EVIDENCE_HASH),
-            "dispute_evidence_hash",
-        )?,
-        ledger_timestamp: match get(F_LEDGER_TIMESTAMP) {
-            ScVal::U64(v) => *v,
-            other => {
+        dispute_reason_hash: opt_hash(&map, "dispute_reason_hash")?,
+        dispute_evidence_hash: opt_hash(&map, "dispute_evidence_hash")?,
+        ledger_timestamp: match map.get("ledger_timestamp") {
+            Some(ScVal::U64(v)) => *v,
+            Some(other) => {
                 return Err(AgentError::Xdr(format!(
                     "ledger_timestamp no es U64: {other:?}"
                 )))
+            }
+            None => {
+                return Err(AgentError::Network(
+                    "snapshot() sin ledger_timestamp".into(),
+                ))
             }
         },
     };
@@ -761,75 +805,121 @@ pub fn decode_snapshot_scval(val: &ScVal) -> Result<ContractSnapshot> {
     Ok(out)
 }
 
-/// Cantidad de campos de `EscrowConfig`; si cambia, hay que revisar los indices de abajo.
-const CONFIG_FIELDS: usize = 14;
-
-/// Decodifica el `EscrowConfig` embebido.
+/// Decodifica el estado, que Soroban representa como `Vec([Symbol(nombre)])`.
 ///
-/// Indices segun `EscrowConfig` en el `types.rs` del contrato.
-fn decode_config(val: &ScVal) -> Result<EscrowConfigView> {
-    let ScVal::Vec(Some(items)) = val else {
-        return Err(AgentError::Xdr(format!("config no es Vec: {val:?}")));
-    };
-    // Se exige la longitud completa aunque solo se lean seis campos: un Config
-    // truncado significa que el contrato cambio, y aceptarlo seria decidir sobre
-    // una lectura que no se sabe que es.
-    if items.len() != CONFIG_FIELDS {
-        return Err(AgentError::Xdr(format!(
-            "config devolvio {} campos y el agente espera {CONFIG_FIELDS}",
-            items.len()
-        )));
+/// Se acepta tambien el `U32` con el indice, que es como lo serializa el enum cuando
+/// se pasa por argumento. Un enum nuevo del contrato se ve como `Unknown`, nunca como
+/// un estado conocido por parecido.
+fn decode_state(val: &ScVal) -> Result<EscrowState> {
+    match val {
+        ScVal::U32(v) => Ok(EscrowState::from_u32(*v)),
+        ScVal::Vec(Some(items)) => {
+            let Some(ScVal::Symbol(name)) = items.first() else {
+                return Err(AgentError::Xdr(format!(
+                    "estado no empieza por Symbol: {val:?}"
+                )));
+            };
+            let name = std::str::from_utf8(name.0.as_slice())
+                .map_err(|_| AgentError::Xdr("nombre de estado no utf-8".into()))?;
+            Ok(match name {
+                "Created" => EscrowState::Created,
+                "Funded" => EscrowState::Funded,
+                "EvidenceSubmitted" => EscrowState::EvidenceSubmitted,
+                "AttestedPass" => EscrowState::AttestedPass,
+                "AttestedFail" => EscrowState::AttestedFail,
+                "Released" => EscrowState::Released,
+                "Cancelled" => EscrowState::Cancelled,
+                "Refunded" => EscrowState::Refunded,
+                "Disputed" => EscrowState::Disputed,
+                "Split" => EscrowState::Split,
+                // Un estado que el agente no conoce no se adivina: se conserva el
+                // texto para que el log diga la verdad.
+                _ => EscrowState::Unknown(u32::MAX),
+            })
+        }
+        other => Err(AgentError::Xdr(format!("estado inesperado: {other:?}"))),
     }
-    let get = |i: usize| -> Result<&ScVal> {
-        items
-            .get(i)
-            .ok_or_else(|| AgentError::Xdr(format!("config incompleto: falta el campo {i}")))
-    };
-    let as_address = |i: usize| -> Result<String> {
-        match get(i)? {
-            ScVal::Address(a) => Ok(sc_address_to_str(a)),
-            other => Err(AgentError::Xdr(format!(
-                "config.{i} no es Address: {other:?}"
-            ))),
-        }
-    };
-    let as_i128 = |i: usize| -> Result<i128> {
-        match get(i)? {
-            ScVal::I128(v) => Ok(((v.hi as i128) << 64) | (v.lo as i128)),
-            other => Err(AgentError::Xdr(format!("config.{i} no es I128: {other:?}"))),
-        }
-    };
-    let as_u64 = |i: usize| -> Result<u64> {
-        match get(i)? {
-            ScVal::U64(v) => Ok(*v),
-            other => Err(AgentError::Xdr(format!("config.{i} no es U64: {other:?}"))),
-        }
-    };
-    let as_u32 = |i: usize| -> Result<u32> {
-        match get(i)? {
-            ScVal::U32(v) => Ok(*v),
-            other => Err(AgentError::Xdr(format!("config.{i} no es U32: {other:?}"))),
-        }
-    };
+}
 
-    // buyer, supplier, engine, resolver, token, amount, submission_period,
-    // attestation_period, objection_period, correction_period, resolution_period,
-    // fallback_outcome, fallback_split_bps, max_correction_attempts.
+/// Interpreta un `ScVal` como `Map` con claves `Symbol` y lo expone por nombre.
+fn as_named_map<'a>(val: &'a ScVal, what: &str) -> Result<NamedMap<'a>> {
+    let ScVal::Map(Some(entries)) = val else {
+        return Err(AgentError::Xdr(format!(
+            "{what} deberia devolver un Map, recibio {val:?}"
+        )));
+    };
+    let mut out = Vec::with_capacity(entries.0.len());
+    for entry in entries.0.iter() {
+        let ScVal::Symbol(name) = &entry.key else {
+            return Err(AgentError::Xdr(format!("clave no Symbol: {:?}", entry.key)));
+        };
+        let name = std::str::from_utf8(name.0.as_slice())
+            .map_err(|_| AgentError::Xdr("clave de mapa no utf-8".into()))?
+            .to_owned();
+        out.push((name, &entry.val));
+    }
+    Ok(NamedMap(out))
+}
+
+/// Mapa con busqueda por nombre, tal y como lo devuelve Soroban.
+struct NamedMap<'a>(Vec<(String, &'a ScVal)>);
+
+impl<'a> NamedMap<'a> {
+    fn get(&self, name: &str) -> Option<&'a ScVal> {
+        self.0.iter().find(|(k, _)| k == name).map(|(_, v)| *v)
+    }
+}
+
+/// Decodifica el `EscrowConfig` embebido, tambien por nombre.
+fn decode_config(val: &ScVal) -> Result<EscrowConfigView> {
+    let map = as_named_map(val, "config")?;
     Ok(EscrowConfigView {
-        engine: as_address(2)?,
-        token: as_address(4)?,
-        amount: as_i128(5)?,
-        attestation_period: as_u64(7)?,
-        fallback_outcome: as_u32(11)?,
-        fallback_split_bps: as_u32(12)?,
+        engine: field_address(&map, "engine")?,
+        token: field_address(&map, "token")?,
+        amount: field_i128(&map, "amount")?,
+        attestation_period: field_u64(&map, "attestation_period")?,
+        fallback_outcome: field_u32(&map, "fallback_outcome")?,
+        fallback_split_bps: field_u32(&map, "fallback_split_bps")?,
     })
 }
 
+fn field_address(map: &NamedMap<'_>, name: &str) -> Result<String> {
+    match map.get(name) {
+        Some(ScVal::Address(a)) => Ok(sc_address_to_str(a)),
+        Some(other) => Err(AgentError::Xdr(format!("{name} no es Address: {other:?}"))),
+        None => Err(AgentError::Xdr(format!("falta el campo {name}"))),
+    }
+}
+
+fn field_i128(map: &NamedMap<'_>, name: &str) -> Result<i128> {
+    match map.get(name) {
+        Some(ScVal::I128(v)) => Ok(((v.hi as i128) << 64) | (v.lo as i128)),
+        Some(other) => Err(AgentError::Xdr(format!("{name} no es I128: {other:?}"))),
+        None => Err(AgentError::Xdr(format!("falta el campo {name}"))),
+    }
+}
+
+fn field_u64(map: &NamedMap<'_>, name: &str) -> Result<u64> {
+    match map.get(name) {
+        Some(ScVal::U64(v)) => Ok(*v),
+        Some(other) => Err(AgentError::Xdr(format!("{name} no es U64: {other:?}"))),
+        None => Err(AgentError::Xdr(format!("falta el campo {name}"))),
+    }
+}
+
+fn field_u32(map: &NamedMap<'_>, name: &str) -> Result<u32> {
+    match map.get(name) {
+        Some(ScVal::U32(v)) => Ok(*v),
+        Some(other) => Err(AgentError::Xdr(format!("{name} no es U32: {other:?}"))),
+        None => Err(AgentError::Xdr(format!("falta el campo {name}"))),
+    }
+}
+
 /// Lee un `Option<BytesN<32>>`, que Soroban codifica como `Void` o `Bytes`.
-fn decode_bytes32_opt(val: &ScVal, name: &str) -> Result<Option<[u8; 32]>> {
-    match val {
-        ScVal::Void => Ok(None),
-        ScVal::Bytes(b) => {
+fn opt_hash(map: &NamedMap<'_>, name: &str) -> Result<Option<[u8; 32]>> {
+    match map.get(name) {
+        None | Some(ScVal::Void) => Ok(None),
+        Some(ScVal::Bytes(b)) => {
             let slice: &[u8] = b.0.as_ref();
             if slice.len() != 32 {
                 return Err(AgentError::Xdr(format!(
@@ -841,18 +931,18 @@ fn decode_bytes32_opt(val: &ScVal, name: &str) -> Result<Option<[u8; 32]>> {
             out.copy_from_slice(slice);
             Ok(Some(out))
         }
-        other => Err(AgentError::Xdr(format!(
+        Some(other) => Err(AgentError::Xdr(format!(
             "{name} no es Bytes ni Void: {other:?}"
         ))),
     }
 }
 
 /// Lee un `Option<u64>`, que Soroban codifica como `Void` o `U64`.
-fn decode_u64_opt(val: &ScVal, name: &str) -> Result<Option<u64>> {
-    match val {
-        ScVal::Void => Ok(None),
-        ScVal::U64(v) => Ok(Some(*v)),
-        other => Err(AgentError::Xdr(format!(
+fn opt_u64(map: &NamedMap<'_>, name: &str) -> Result<Option<u64>> {
+    match map.get(name) {
+        None | Some(ScVal::Void) => Ok(None),
+        Some(ScVal::U64(v)) => Ok(Some(*v)),
+        Some(other) => Err(AgentError::Xdr(format!(
             "{name} no es U64 ni Void: {other:?}"
         ))),
     }
@@ -896,7 +986,6 @@ pub type SharedChain = Arc<dyn ChainClient>;
 mod tests {
     use super::*;
 
-    /// Direccion de cuenta valida en XDR, para construir el `EscrowConfig` de prueba.
     fn account(seed: u8) -> ScVal {
         ScVal::Address(xdr::ScAddress::Account(xdr::AccountId(
             xdr::PublicKey::PublicKeyTypeEd25519(xdr::Uint256([seed; 32])),
@@ -913,49 +1002,52 @@ mod tests {
         ScVal::Bytes(xdr::ScBytes(xdr::BytesM::try_from(raw.to_vec()).unwrap()))
     }
 
-    fn u64v(v: u64) -> ScVal {
-        ScVal::U64(v)
+    /// `Map` con claves `Symbol`, la forma en que Soroban devuelve los structs.
+    fn named(entries: Vec<(&str, ScVal)>) -> ScVal {
+        let pairs = entries
+            .into_iter()
+            .map(|(k, v)| (ScVal::Symbol(k.try_into().expect("clave valida")), v))
+            .collect::<Vec<_>>();
+        ScVal::Map(Some(
+            xdr::ScMap::sorted_from_pairs(pairs.into_iter()).expect("mapa ordenado"),
+        ))
     }
 
-    /// `VecM` de test: no es mutable, asi que se reconstruye desde un `Vec`.
-    fn vec_of(vals: Vec<ScVal>) -> ScVal {
-        ScVal::Vec(Some(xdr::ScVec(xdr::VecM::try_from(vals).unwrap())))
+    /// Estado como lo devuelve el contrato: `Vec([Symbol(nombre)])`.
+    fn state_val(name: &str) -> ScVal {
+        ScVal::Vec(Some(xdr::ScVec(
+            xdr::VecM::try_from(vec![ScVal::Symbol(name.try_into().unwrap())]).unwrap(),
+        )))
     }
 
-    /// Desarma un `ScVal::Vec` a `Vec<ScVal>` para poder alterarlo en un test.
-    fn as_vec(val: &ScVal) -> Vec<ScVal> {
-        let ScVal::Vec(Some(items)) = val else {
-            panic!("se esperaba ScVal::Vec")
-        };
-        items.0.to_vec()
-    }
-
-    /// `EscrowConfig` completo, con los 14 campos en el orden de `types.rs`.
-    fn config_vec() -> ScVal {
-        vec_of(vec![
-            account(1),  // 0 buyer
-            account(2),  // 1 supplier
-            account(3),  // 2 engine
-            account(4),  // 3 resolver
-            contract(5), // 4 token
-            ScVal::I128(xdr::Int128Parts {
-                hi: 0,
-                lo: 1_000_000,
-            }), // 5 amount
-            u64v(1_000), // 6 submission_period
-            u64v(600),   // 7 attestation_period
-            u64v(1_200), // 8 objection_period
-            u64v(1_800), // 9 correction_period
-            u64v(2_400), // 10 resolution_period
-            ScVal::U32(2), // 11 fallback_outcome = Refund
-            ScVal::U32(0), // 12 fallback_split_bps
-            ScVal::U32(1), // 13 max_correction_attempts
+    fn config_map() -> ScVal {
+        named(vec![
+            ("buyer", account(1)),
+            ("supplier", account(2)),
+            ("engine", account(3)),
+            ("resolver", account(4)),
+            ("token", contract(5)),
+            (
+                "amount",
+                ScVal::I128(xdr::Int128Parts {
+                    hi: 0,
+                    lo: 1_000_000,
+                }),
+            ),
+            ("submission_period", ScVal::U64(1_000)),
+            ("attestation_period", ScVal::U64(600)),
+            ("objection_period", ScVal::U64(1_200)),
+            ("correction_period", ScVal::U64(1_800)),
+            ("resolution_period", ScVal::U64(2_400)),
+            ("fallback_outcome", ScVal::U32(2)),
+            ("fallback_split_bps", ScVal::U32(0)),
+            ("max_correction_attempts", ScVal::U32(1)),
         ])
     }
 
-    /// `EscrowSnapshot` completo, con los 16 campos en el orden de `types.rs`.
+    /// `snapshot()` completo con los 16 campos, por nombre.
     fn snapshot_val(
-        state: u32,
+        state: &str,
         evidence: Option<[u8; 32]>,
         report: Option<[u8; 32]>,
         correction_attempts: u32,
@@ -964,33 +1056,31 @@ mod tests {
             Some(raw) => bytes32(raw),
             None => ScVal::Void,
         };
-        let opt_u64 = |v: Option<u64>| match v {
-            Some(n) => u64v(n),
-            None => ScVal::Void,
-        };
-        vec_of(vec![
-            ScVal::U32(state),               // 0 state
-            config_vec(),                    // 1 config
-            opt_hash(evidence),              // 2 evidence_bundle_hash
-            opt_hash(report),                // 3 report_hash
-            opt_u64(Some(1_000)),            // 4 funded_at
-            opt_u64(Some(2_000)),            // 5 submission_deadline
-            opt_u64(Some(3_000)),            // 6 attestation_deadline
-            opt_u64(None),                   // 7 attested_at
-            opt_u64(None),                   // 8 objection_deadline
-            opt_u64(None),                   // 9 correction_deadline
-            opt_u64(None),                   // 10 disputed_at
-            opt_u64(None),                   // 11 resolution_deadline
-            ScVal::U32(correction_attempts), // 12 correction_attempts
-            opt_hash(None),                  // 13 dispute_reason_hash
-            opt_hash(None),                  // 14 dispute_evidence_hash
-            u64v(2_500),                     // 15 ledger_timestamp
+        named(vec![
+            ("state", state_val(state)),
+            ("config", config_map()),
+            ("evidence_bundle_hash", opt_hash(evidence)),
+            ("report_hash", opt_hash(report)),
+            ("funded_at", ScVal::U64(1_000)),
+            ("submission_deadline", ScVal::U64(2_000)),
+            ("attestation_deadline", ScVal::U64(3_000)),
+            ("attested_at", ScVal::Void),
+            ("objection_deadline", ScVal::Void),
+            ("correction_deadline", ScVal::Void),
+            ("disputed_at", ScVal::Void),
+            ("resolution_deadline", ScVal::Void),
+            ("correction_attempts", ScVal::U32(correction_attempts)),
+            ("dispute_reason_hash", ScVal::Void),
+            ("dispute_evidence_hash", ScVal::Void),
+            ("ledger_timestamp", ScVal::U64(2_500)),
         ])
     }
 
     #[test]
-    fn decodes_state_and_config_by_name_position() {
-        let sc = decode_snapshot_scval(&snapshot_val(2, Some([1u8; 32]), None, 0)).unwrap();
+    fn decodes_state_and_config_by_name() {
+        let sc =
+            decode_snapshot_scval(&snapshot_val("EvidenceSubmitted", Some([1u8; 32]), None, 0))
+                .unwrap();
         assert_eq!(sc.state, EscrowState::EvidenceSubmitted);
         assert_eq!(sc.config.amount, 1_000_000);
         assert_eq!(sc.config.attestation_period, 600);
@@ -1000,80 +1090,129 @@ mod tests {
     }
 
     #[test]
+    fn decodes_every_state_by_its_name() {
+        // El enum llega como `Vec[Symbol]`, no como el indice numerico que se usa
+        // cuando se pasa por argumento. Los diez estados deben reconocerse.
+        for (name, expected) in [
+            ("Created", EscrowState::Created),
+            ("Funded", EscrowState::Funded),
+            ("EvidenceSubmitted", EscrowState::EvidenceSubmitted),
+            ("AttestedPass", EscrowState::AttestedPass),
+            ("AttestedFail", EscrowState::AttestedFail),
+            ("Released", EscrowState::Released),
+            ("Cancelled", EscrowState::Cancelled),
+            ("Refunded", EscrowState::Refunded),
+            ("Disputed", EscrowState::Disputed),
+            ("Split", EscrowState::Split),
+        ] {
+            let sc = decode_snapshot_scval(&snapshot_val(
+                name,
+                Some([1u8; 32]),
+                if matches!(expected, EscrowState::AttestedPass) {
+                    Some([9u8; 32])
+                } else {
+                    None
+                },
+                0,
+            ))
+            .unwrap();
+            assert_eq!(sc.state, expected, "estado {name}");
+        }
+    }
+
+    #[test]
+    fn unknown_state_is_not_silently_mapped() {
+        // Un estado que el contrato anade no se confunde con uno conocido.
+        let sc = decode_snapshot_scval(&snapshot_val("SomethingNew", None, None, 0)).unwrap();
+        assert_ne!(sc.state, EscrowState::Created);
+        assert_ne!(sc.state, EscrowState::Funded);
+    }
+
+    #[test]
     fn decodes_optionals_as_void() {
-        let sc = decode_snapshot_scval(&snapshot_val(2, Some([1u8; 32]), None, 0)).unwrap();
-        // Un escrow atestectable todavia no tiene report_hash ni plazos derivados.
+        let sc =
+            decode_snapshot_scval(&snapshot_val("EvidenceSubmitted", Some([1u8; 32]), None, 0))
+                .unwrap();
         assert_eq!(sc.report_hash, None);
         assert_eq!(sc.attested_at, None);
         assert_eq!(sc.objection_deadline, None);
     }
 
     #[test]
-    fn wrong_field_count_is_an_explicit_error() {
-        // Un contrato con un campo mas debe fallar con un mensaje que diga que
-        // hay que actualizar el agente, no leerse como si nada.
-        let mut items = as_vec(&snapshot_val(2, Some([1u8; 32]), None, 0));
-        items.push(ScVal::U32(0));
-        let err = decode_snapshot_scval(&vec_of(items)).unwrap_err();
-        let msg = format!("{err}");
-        assert!(msg.contains("17"), "esperaba contar los campos, dio: {msg}");
-        assert!(
-            msg.contains("actualizarse"),
-            "esperaba pedir actualizacion: {msg}"
-        );
+    fn missing_field_is_an_explicit_error() {
+        // Si el contrato renombra un campo, se dice cual falta en vez de leer shifting.
+        let mut entries = match snapshot_val("Funded", None, None, 0) {
+            ScVal::Map(Some(m)) => m.0.to_vec(),
+            _ => panic!("se esperaba Map"),
+        };
+        entries.retain(|e| e.key != ScVal::Symbol("ledger_timestamp".try_into().unwrap()));
+        let val = ScVal::Map(Some(xdr::ScMap(entries.try_into().unwrap())));
+        let err = decode_snapshot_scval(&val).unwrap_err();
+        assert!(format!("{err}").contains("ledger_timestamp"), "{err}");
     }
 
     #[test]
     fn wrong_type_is_not_silently_zero() {
-        let mut items = as_vec(&snapshot_val(2, Some([1u8; 32]), None, 0));
-        items[F_CORRECTION_ATTEMPTS] = ScVal::U64(1);
-        let err = decode_snapshot_scval(&vec_of(items)).unwrap_err();
-        assert!(format!("{err}").contains("correction_attempts"));
+        let err = decode_snapshot_scval(&named(vec![
+            ("state", state_val("Funded")),
+            ("config", config_map()),
+            ("correction_attempts", ScVal::U64(1)),
+            ("ledger_timestamp", ScVal::U64(1)),
+        ]))
+        .unwrap_err();
+        assert!(format!("{err}").contains("correction_attempts"), "{err}");
+    }
+
+    #[test]
+    fn field_order_does_not_matter() {
+        // Es la ventaja de leer por nombre: reordenar el contrato no mueve valores.
+        let a = decode_snapshot_scval(&snapshot_val("Funded", Some([1u8; 32]), None, 0)).unwrap();
+        let mut entries = match snapshot_val("Funded", Some([1u8; 32]), None, 0) {
+            ScVal::Map(Some(m)) => m.0.to_vec(),
+            _ => panic!("se esperaba Map"),
+        };
+        entries.reverse();
+        let reversed = ScVal::Map(Some(xdr::ScMap(entries.try_into().unwrap())));
+        let b = decode_snapshot_scval(&reversed).unwrap();
+        assert_eq!(a, b);
     }
 
     #[test]
     fn attestable_with_report_hash_is_rejected_as_inconsistent() {
-        // EvidenceSubmitted + report_hash no lo puede producir el contrato P0-07:
-        // es una lectura de una version distinta, y el motor no debe decidir sobre ella.
-        let err = decode_snapshot_scval(&snapshot_val(2, Some([1u8; 32]), Some([9u8; 32]), 0))
-            .unwrap_err();
+        let err = decode_snapshot_scval(&snapshot_val(
+            "EvidenceSubmitted",
+            Some([1u8; 32]),
+            Some([9u8; 32]),
+            0,
+        ))
+        .unwrap_err();
         assert!(format!("{err}").contains("inconsistente"));
     }
 
     #[test]
     fn attested_pass_decodes_with_report_hash() {
-        let sc =
-            decode_snapshot_scval(&snapshot_val(3, Some([1u8; 32]), Some([9u8; 32]), 0)).unwrap();
+        let sc = decode_snapshot_scval(&snapshot_val(
+            "AttestedPass",
+            Some([1u8; 32]),
+            Some([9u8; 32]),
+            0,
+        ))
+        .unwrap();
         assert_eq!(sc.state, EscrowState::AttestedPass);
         assert_eq!(sc.report_hash, Some([9u8; 32]));
     }
 
     #[test]
     fn correction_attempt_is_visible_to_the_engine() {
-        let sc = decode_snapshot_scval(&snapshot_val(2, Some([2u8; 32]), None, 1)).unwrap();
+        let sc =
+            decode_snapshot_scval(&snapshot_val("EvidenceSubmitted", Some([2u8; 32]), None, 1))
+                .unwrap();
         assert_eq!(sc.correction_attempts, 1);
     }
 
     #[test]
-    fn unknown_state_survives_decoding() {
-        let sc = decode_snapshot_scval(&snapshot_val(42, None, None, 0)).unwrap();
-        assert_eq!(sc.state, EscrowState::Unknown(42));
-        assert_eq!(sc.state.to_string(), "Unknown(42)");
-    }
-
-    #[test]
-    fn non_vec_is_rejected() {
+    fn non_map_is_rejected() {
         assert!(decode_snapshot_scval(&ScVal::U32(2)).is_err());
-    }
-
-    #[test]
-    fn config_with_missing_field_is_rejected() {
-        let mut items = as_vec(&snapshot_val(2, Some([1u8; 32]), None, 0));
-        let mut cfg = as_vec(&items[F_CONFIG]);
-        cfg.pop();
-        items[F_CONFIG] = vec_of(cfg);
-        let err = decode_snapshot_scval(&vec_of(items)).unwrap_err();
-        assert!(format!("{err}").contains("config"));
     }
 
     fn snap(state: EscrowState) -> EscrowSnapshot {
@@ -1120,21 +1259,11 @@ mod tests {
     }
 
     #[test]
-    fn correction_is_detected_from_attempts() {
-        let mut s = snap(EscrowState::EvidenceSubmitted);
-        s.correction_attempts = 1;
-        assert!(s.is_correction());
-    }
-
-    #[test]
     fn contract_id_must_be_valid_strkey() {
-        // CRC y version verificados a mano; un id mal escrito debe fallar al
-        // construir, no a mitad de una atestacion.
         assert!(
             parse_contract_id("CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE").is_ok()
         );
         assert!(parse_contract_id("no-es-un-contract-id").is_err());
-        // Version 6 (ed25519) no es un id de contrato, aunque tenga longuitud correcta.
         assert!(
             parse_contract_id("GDLVVGAB5ZWOW6NOZUHRBCEQI54OAJ5GJLDIKDDUAP6B5HDGXIEFDOAM").is_err()
         );
