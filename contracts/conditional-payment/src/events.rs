@@ -29,6 +29,7 @@ pub struct EscrowCreated {
     pub resolution_period: u64,
     pub fallback_outcome: FallbackOutcome,
     pub fallback_split_bps: u32,
+    pub max_correction_attempts: u32,
 }
 
 #[contractevent]

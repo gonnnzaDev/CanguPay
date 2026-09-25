@@ -114,6 +114,7 @@ impl TestContext {
             resolution_period: RESOLUTION_PERIOD,
             fallback_outcome: FallbackOutcome::Refund,
             fallback_split_bps: 0,
+            max_correction_attempts: 1,
         }
     }
 
@@ -177,6 +178,7 @@ fn happy_path_pass_releases_funds() {
             resolution_period: RESOLUTION_PERIOD,
             fallback_outcome: FallbackOutcome::Refund,
             fallback_split_bps: 0,
+            max_correction_attempts: 1,
         }
         .to_xdr(&ctx.env, &ctx.contract),
     );
@@ -1066,6 +1068,30 @@ fn initialize_rejects_supplier_equals_engine() {
 }
 
 #[test]
+fn initialize_rejects_buyer_equals_resolver() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.resolver = bad.buyer.clone();
+    must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
+fn initialize_rejects_supplier_equals_resolver() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.resolver = bad.supplier.clone();
+    must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
+fn initialize_rejects_engine_equals_resolver() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.resolver = bad.engine.clone();
+    must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
 fn initialize_rejects_same_roles() {
     // las tres iguales (cubierto por los 3 anteriores, pero se mantiene por completitud)
     let ctx = setup(true);
@@ -1073,6 +1099,17 @@ fn initialize_rejects_same_roles() {
     bad.supplier = bad.buyer.clone();
     bad.engine = bad.buyer.clone();
     must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
+fn initialize_rejects_invalid_max_correction_attempts() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.max_correction_attempts = 0;
+    must_panic(|| ctx.client().initialize(&bad));
+    let mut bad2 = ctx.config();
+    bad2.max_correction_attempts = 2;
+    must_panic(|| ctx.client().initialize(&bad2));
 }
 
 #[test]
@@ -1655,4 +1692,128 @@ fn finalize_disputed_fallback_and_double_settlement_rejected() {
     });
     must_panic(|| ctx.client().approve());
     must_panic(|| ctx.client().submit_evidence(&evidence_hash(&ctx.env)));
+}
+
+#[test]
+fn fallback_release_refund_split_and_rounding_large_amount_and_deadline_edges() {
+    // Fallback Release
+    let ctx = setup(true);
+    let mut cfg = ctx.config();
+    cfg.fallback_outcome = FallbackOutcome::Release;
+    cfg.fallback_split_bps = 0;
+    ctx.client().initialize(&cfg);
+    ctx.sac().mint(&cfg.buyer, &AMOUNT);
+    ctx.client().fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx.env));
+    ctx.client().raise_dispute(
+        &BytesN::from_array(&ctx.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx.env, &[11u8; 32]),
+    );
+    // deadline-1 no finalizable
+    ctx.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD - 1);
+    must_panic(|| {
+        ctx.client().finalize();
+    });
+    // deadline sí
+    ctx.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Released);
+    assert_eq!(ctx.token_balance(&ctx.supplier), AMOUNT);
+    assert_eq!(ctx.token_balance(&ctx.buyer), 0);
+    // deadline+1 idempotente
+    assert_eq!(ctx.client().finalize(), EscrowState::Released);
+
+    // Fallback Refund
+    let ctx2 = setup(true);
+    let mut cfg2 = ctx2.config();
+    cfg2.fallback_outcome = FallbackOutcome::Refund;
+    cfg2.fallback_split_bps = 0;
+    ctx2.client().initialize(&cfg2);
+    ctx2.sac().mint(&cfg2.buyer, &AMOUNT);
+    ctx2.client().fund();
+    ctx2.client().submit_evidence(&evidence_hash(&ctx2.env));
+    ctx2.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx2.env));
+    ctx2.client().raise_dispute(
+        &BytesN::from_array(&ctx2.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx2.env, &[11u8; 32]),
+    );
+    ctx2.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret2 = ctx2.client().finalize();
+    assert_eq!(ret2, EscrowState::Refunded);
+    assert_eq!(ctx2.token_balance(&ctx2.buyer), AMOUNT);
+
+    // Fallback Split redondeo: amount no divisible por 10000
+    let ctx3 = setup(true);
+    let mut cfg3 = ctx3.config();
+    cfg3.amount = 10_001; // no divisible
+    cfg3.fallback_outcome = FallbackOutcome::Split;
+    cfg3.fallback_split_bps = 3333; // 33.33%
+    ctx3.client().initialize(&cfg3);
+    ctx3.sac().mint(&cfg3.buyer, &10_001);
+    ctx3.client().fund();
+    ctx3.client().submit_evidence(&evidence_hash(&ctx3.env));
+    ctx3.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx3.env));
+    ctx3.client().raise_dispute(
+        &BytesN::from_array(&ctx3.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx3.env, &[11u8; 32]),
+    );
+    ctx3.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret3 = ctx3.client().finalize();
+    assert_eq!(ret3, EscrowState::Split);
+    let (s, b) = crate::calc_split_amounts(&ctx3.env, 10_001, 3333);
+    assert_eq!(s + b, 10_001, "conserva monto");
+    assert_eq!(ctx3.token_balance(&ctx3.supplier), s);
+    assert_eq!(ctx3.token_balance(&ctx3.buyer), b);
+
+    // Monto grande sin overflow: i128::MAX / 4
+    let large: i128 = i128::MAX / 4;
+    let ctx4 = setup(true);
+    let mut cfg4 = ctx4.config();
+    cfg4.amount = large;
+    cfg4.fallback_outcome = FallbackOutcome::Split;
+    cfg4.fallback_split_bps = 5000;
+    ctx4.client().initialize(&cfg4);
+    ctx4.sac().mint(&cfg4.buyer, &large);
+    ctx4.client().fund();
+    ctx4.client().submit_evidence(&evidence_hash(&ctx4.env));
+    ctx4.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx4.env));
+    ctx4.client().raise_dispute(
+        &BytesN::from_array(&ctx4.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx4.env, &[11u8; 32]),
+    );
+    ctx4.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret4 = ctx4.client().finalize();
+    assert_eq!(ret4, EscrowState::Split);
+    let (s4, b4) = crate::calc_split_amounts(&ctx4.env, large, 5000);
+    assert_eq!(s4 + b4, large);
+    assert_eq!(ctx4.token_balance(&ctx4.supplier), s4);
+    assert_eq!(ctx4.token_balance(&ctx4.buyer), b4);
+
+    // resolve() con Split también usa función segura y conserva
+    let ctx5 = setup(true);
+    ctx5.to_attested_pass();
+    let r = BytesN::from_array(&ctx5.env, &[10u8; 32]);
+    let e = BytesN::from_array(&ctx5.env, &[11u8; 32]);
+    ctx5.client().raise_dispute(&r, &e);
+    ctx5.client().resolve(&FallbackOutcome::Split, &1);
+    assert_eq!(ctx5.token_balance(&ctx5.supplier), 1 * AMOUNT / 10_000); // 1 bps
+    assert_eq!(
+        ctx5.token_balance(&ctx5.buyer) + ctx5.token_balance(&ctx5.supplier),
+        AMOUNT
+    );
 }

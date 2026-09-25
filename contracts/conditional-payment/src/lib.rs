@@ -46,6 +46,32 @@ fn read_state(env: &Env) -> EscrowState {
         })
 }
 
+pub(crate) fn calc_split_amounts(env: &Env, amount: i128, bps: u32) -> (i128, i128) {
+    let bps = bps as i128;
+    // amount * bps / 10000 sin desbordar i128: (amount/10000)*bps + (amount%10000)*bps/10000
+    let base = amount
+        .checked_div(10_000)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let rem = amount
+        .checked_rem(10_000)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let part1 = base
+        .checked_mul(bps)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let part2 = rem
+        .checked_mul(bps)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow))
+        .checked_div(10_000)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let supplier = part1
+        .checked_add(part2)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let buyer = amount
+        .checked_sub(supplier)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    (supplier, buyer)
+}
+
 #[contract]
 pub struct ConditionalPayment;
 
@@ -91,6 +117,9 @@ impl ConditionalPayment {
                 }
             }
         }
+        if config.max_correction_attempts != 1 {
+            panic_with_error!(&env, Error::InvalidMaxCorrectionAttempts);
+        }
         // 6 pares: buyer/supplier/engine/resolver deben ser distintos.
         // Address valida StrKey nativamente al deserializar XDR, no hace falta check manual.
         if config.buyer == config.supplier
@@ -122,6 +151,7 @@ impl ConditionalPayment {
             resolution_period: config.resolution_period,
             fallback_outcome: config.fallback_outcome,
             fallback_split_bps: config.fallback_split_bps,
+            max_correction_attempts: config.max_correction_attempts,
         }
         .publish(&env);
     }
@@ -331,20 +361,28 @@ impl ConditionalPayment {
         let config = read_config(&env);
         let state = read_state(&env);
         let now = env.ledger().timestamp();
-        let attested_at: u64 = env.storage().instance().get(&DataKey::AttestedAt).unwrap();
         match state {
             EscrowState::AttestedPass => {
                 config.buyer.require_auth();
+                let attested_at: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::AttestedAt)
+                    .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidState));
                 let deadline = attested_at
                     .checked_add(config.objection_period)
                     .expect("objection_period overflow");
                 if now >= deadline {
                     panic_with_error!(&env, Error::InvalidState);
                 }
-                // Solo una disputa por operación: si ya está Disputed, no llega aquí
             }
             EscrowState::AttestedFail => {
                 config.supplier.require_auth();
+                let attested_at: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::AttestedAt)
+                    .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidState));
                 let deadline = attested_at
                     .checked_add(config.correction_period)
                     .expect("correction_period overflow");
@@ -438,8 +476,8 @@ impl ConditionalPayment {
                 EscrowState::Refunded
             }
             FallbackOutcome::Split => {
-                let supplier_amount = config.amount * split_bps as i128 / 10_000;
-                let buyer_amount = config.amount - supplier_amount;
+                let (supplier_amount, buyer_amount) =
+                    calc_split_amounts(&env, config.amount, split_bps);
                 if supplier_amount > 0 {
                     TokenClient::new(&env, &config.token).transfer(
                         &current,
@@ -515,8 +553,8 @@ impl ConditionalPayment {
                         EscrowState::Refunded
                     }
                     FallbackOutcome::Split => {
-                        let supplier_amount = config.amount * split_bps as i128 / 10_000;
-                        let buyer_amount = config.amount - supplier_amount;
+                        let (supplier_amount, buyer_amount) =
+                            calc_split_amounts(&env, config.amount, split_bps);
                         if supplier_amount > 0 {
                             TokenClient::new(&env, &config.token).transfer(
                                 &current,

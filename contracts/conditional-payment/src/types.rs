@@ -18,6 +18,7 @@ pub struct EscrowConfig {
     pub resolution_period: u64,
     pub fallback_outcome: FallbackOutcome,
     pub fallback_split_bps: u32,
+    pub max_correction_attempts: u32,
 }
 
 #[contracttype]
@@ -96,4 +97,6 @@ pub enum Error {
     InvalidFallback = 15,
     AttestationDeadlinePassed = 16,
     ObjectionDeadlinePassed = 17,
+    InvalidMaxCorrectionAttempts = 18,
+    ArithmeticOverflow = 19,
 }
