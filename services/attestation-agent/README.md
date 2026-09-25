@@ -28,6 +28,12 @@ cargo run -p attestation-agent --bin cangu-attest -- attest --bundle evidence.js
 
 # Keeper: vigila y atesta cuando la evidencia está lista.
 cargo run -p attestation-agent --bin cangu-attest -- keeper --bundle evidence.json --amount 1000 --poll 10
+
+# Keeper que además llama a finalize() cuando un plazo parece vencido.
+cargo run -p attestation-agent --bin cangu-attest -- keeper --bundle evidence.json --amount 1000 --finalize
+
+# Llama a finalize() una vez. El contrato decide si el plazo venció.
+cargo run -p attestation-agent --bin cangu-attest -- finalize
 ```
 
 Códigos de salida: `0` correcto · `1` FAIL de reglas · `2` rechazo (estructura, hash, estado, plazo, configuración) · `3` infraestructura (red, XDR, io).
@@ -62,9 +68,53 @@ Garantizado y cubierto por tests:
   confirma releyendo el contrato: si el estado no quedó en `Attested*`, es un error.
 
 **No** verificado todavía: la invocación real en testnet contra un contrato desplegado
-(criterio 5 del issue). Requiere un `CANGUPA_CONTRACT_ID` desplegado y credenciales de la
-cuenta engine. Hasta entonces, el camino de envío está implementado y probado contra
-dobles, pero sin una ejecución en red que lo respalde.
+(criterio 5 del issue). El intento se hizo y está documentado abajo con su diagnóstico.
+
+### Intento de despliegue en testnet (sin completar)
+
+Qué se conseguiu, verificado contra la red y no de forma local:
+
+- Cinco cuentas creadas y fondeadas con friendbot (10 000 XLM cada una), confirmado
+  leyendo la entrada de cuenta del ledger, no solo por el `200` de friendbot.
+- El cálculo del payload de firma es correcto: reproduce exactamente la firma que la
+  propia red ya había aceptado en la transacción de friendbot para esa misma cuenta.
+
+Dónde se bloquea: toda transacción enviada por las herramientas de este repositorio se
+rechaza con `TxBadAuth` y `fee_charged: 100`, o sea en la primera comprobación, antes de
+llegar a validar nada. Se descartó como causa:
+
+| Hipótesis | Cómo se descartó |
+| --- | --- |
+| Payload de firma mal calculado | Reproduce la firma válida de friendbot |
+| Clave distinta de la cuenta | La dirección derivada del secreto coincide con la cuenta fondeada, sin firmantes ni umbrales adicionales |
+| Comisión insuficiente | Probada a 100, 100 000 y 1 000 000, mismo error |
+| Secuencia equivocada | Barrido alrededor del valor leído: solo una pasa la comprobación de secuencia, y aun así falla el auth |
+| Forma de la operación | Falla igual un pago de 1 stroop a la propia cuenta, sin Soroban ni contrato |
+
+Lo que sí quedó corregido por el camino: al leer `stellar-rpc-client` aparece que desde
+el **protocolo 28** el RPC entrega credenciales `SOROBAN_CREDENTIALS_ADDRESS_V2`, que
+según [CAP-71-02](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0071-02.md)
+**no** se firman con el payload de la transacción sino con el preimage
+`ENVELOPE_TYPE_SOROBAN_AUTHORIZATION_WITH_ADDRESS`. El agente firmaba ambas variantes con
+el payload de la transacción, lo que la red rechaza con `txBAD_AUTH`. Ahora cada variante
+se firma con su payload, con tests que comprueban que producen firmas distintas y que la
+v2 verifica contra el preimage correcto.
+
+Por eso **no** se publica ningún contract ID ni tx hash: no existen. El comando de
+montaje queda listo y es reproducible:
+
+```bash
+# Despliega el token de prueba y el escrow, y deja el contrato en
+# EvidenceSubmitted listo para atestuar. Requiere CANGUPA_TESTNET_KEYS con
+# un archivo de claves fuera del repo.
+cargo build --release --target wasm32v1-none \
+    -p conditional-payment -p test-token
+cargo run --release -p attestation-agent --example testnet_setup -- \
+    <archivo-de-claves> pass
+```
+
+El token de `contracts/test-token` es **un token de prueba**, no CPUSD: existe porque en
+testnet no hay un SAC desplegado para una divisa de prueba y `fund()` necesita uno.
 
 El bundle se lee de disco. No hay cliente HTTP/IPFS: el hash en cadena se verifica contra
 el archivo local que se le pase.

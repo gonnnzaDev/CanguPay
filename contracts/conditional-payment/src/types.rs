@@ -1,6 +1,6 @@
 //! Tipos de contrato y errores de la operación de pago condicional.
 
-use soroban_sdk::{contracterror, contracttype, Address};
+use soroban_sdk::{contracterror, contracttype, Address, BytesN};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,6 +77,40 @@ pub enum DataKey {
     CorrectionAttempts,
     DisputeReasonHash,
     DisputeEvidenceHash,
+}
+
+/// Instantanea completa para lectores externos (agente de atestacion, UI).
+///
+/// Todo lo que el motor necesita para decidir va aqui, con nombre: nadie tiene
+/// que adivinar la posicion de un campo dentro del `ScVec` ni conocer las
+/// `DataKey` privadas. Los plazos que aun no aplican son `None`, y
+/// `ledger_timestamp` es el reloj que el propio contrato usa para los plazos.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowSnapshot {
+    pub state: EscrowState,
+    pub config: EscrowConfig,
+    /// Hash del bundle que el supplier subio; es la entrada del motor.
+    pub evidence_bundle_hash: Option<BytesN<32>>,
+    /// Hash del reporte con el que el engine atestiguo, si ya atesto.
+    /// El outcome no se duplica aqui: se deduce de `state`, que es la unica
+    /// fuente que `attest()` y `dispute()` mantienen coherente.
+    pub report_hash: Option<BytesN<32>>,
+    pub funded_at: Option<u64>,
+    pub submission_deadline: Option<u64>,
+    pub attestation_deadline: Option<u64>,
+    pub attested_at: Option<u64>,
+    /// `attested_at + objection_period`: hasta ahi el buyer puede objetar.
+    pub objection_deadline: Option<u64>,
+    /// `attested_at + correction_period`: hasta ahi el supplier corrige.
+    pub correction_deadline: Option<u64>,
+    pub disputed_at: Option<u64>,
+    pub resolution_deadline: Option<u64>,
+    pub correction_attempts: u32,
+    pub dispute_reason_hash: Option<BytesN<32>>,
+    pub dispute_evidence_hash: Option<BytesN<32>>,
+    /// Reloj del ledger actual: la misma fuente de verdad de los plazos.
+    pub ledger_timestamp: u64,
 }
 
 #[contracterror]

@@ -119,6 +119,16 @@ pub fn attest_args(outcome: AttestationOutcome, report_hash: &[u8; 32]) -> Resul
 /// Nombre de la funcion del contrato.
 pub const ATTEST_FN: &str = "attest";
 
+/// Nombre de la funcion de vencimiento del contrato.
+pub const FINALIZE_FN: &str = "finalize";
+
+/// Funciones del contrato que exigen `auth` de Soroban.
+///
+/// `attest` llama a `config.engine.require_auth()`, asi que sin la firma correspondiente
+/// la transaccion se rechaza. `finalize` es deliberadamente publica: cualquiera puede
+/// ejecutarla porque el contrato es quien aplica el vencimiento, no quien lo comprueba.
+const REQUIRES_SOROBAN_AUTH: &[&str] = &[ATTEST_FN];
+
 /// Comision por operacion, en stroops, usada como base antes de sumar el `resource_fee`.
 pub const BASE_FEE_STROOPS: u32 = 100;
 
@@ -152,6 +162,41 @@ pub fn build_invoke_tx(
                     .try_into()
                     .map_err(|_| AgentError::Xdr(format!("{ATTEST_FN} no es un simbolo valido")))?,
                 args: vec_of(args)?,
+            }),
+            auth: xdr::VecM::default(),
+        }),
+        source_account: None,
+    };
+    Ok(xdr::Transaction {
+        source_account: source.clone(),
+        fee: BASE_FEE_STROOPS,
+        seq_num: xdr::SequenceNumber(seq_num),
+        cond: xdr::Preconditions::default(),
+        memo: xdr::Memo::None,
+        operations: xdr::VecM::try_from(vec![op])
+            .map_err(|e| AgentError::Xdr(format!("operaciones: {e}")))?,
+        ext: xdr::TransactionExt::V0,
+    })
+}
+
+/// Construye la transaccion `InvokeHostFunctionOp` que llama a `finalize`.
+///
+/// No lleva argumentos y **no** exige `auth`: el contrato decide por su cuenta si el
+/// plazo se vencio. Se firma igualmente con la cuenta engine para que la transaccion
+/// tenga una secuencia conocida y que el keeper quede como un pagador identificable.
+pub fn build_finalize_tx(
+    contract: &xdr::ScAddress,
+    source: &xdr::MuxedAccount,
+    seq_num: i64,
+) -> Result<xdr::Transaction> {
+    let op = xdr::Operation {
+        body: xdr::OperationBody::InvokeHostFunction(xdr::InvokeHostFunctionOp {
+            host_function: xdr::HostFunction::InvokeContract(xdr::InvokeContractArgs {
+                contract_address: contract.clone(),
+                function_name: FINALIZE_FN.try_into().map_err(|_| {
+                    AgentError::Xdr(format!("{FINALIZE_FN} no es un simbolo valido"))
+                })?,
+                args: xdr::VecM::default(),
             }),
             auth: xdr::VecM::default(),
         }),
@@ -212,20 +257,22 @@ pub fn apply_simulation(
 
 /// Firma la autorizacion de la cuenta engine y devuelve el envelope listo para enviar.
 ///
-/// Busca la entrada de auth que corresponde a la direccion del engine; si la simulacion
-/// no la devolvio, es un error explicito y no un fallo silencioso.
+/// Busca la entrada de auth que corresponde a la direccion del engine. Si la simulacion
+/// no devolvio ninguna credencial y la funcion **exige** `auth` (como `attest`), es un
+/// error explicito y no un fallo silencioso. Si en cambio la funcion es publica
+/// (`finalize`), la ausencia de credenciales es lo esperado y solo se firma el
+/// sobre de la transaccion.
 pub fn sign_envelope(
     signer: &EngineSigner,
     tx: &xdr::Transaction,
     network_id: &xdr::Hash,
+    fn_name: &str,
 ) -> Result<xdr::TransactionEnvelope> {
     let engine: xdr::ScAddress = signer
         .address()
         .parse::<xdr::ScAddress>()
         .map_err(|e| AgentError::Xdr(format!("direccion del engine invalida: {e}")))?;
     let payload_hash = signature_payload_hash(network_id, tx)?;
-    let signature = signature_scval(signer, &payload_hash)?;
-
     let mut tx = tx.clone();
     let mut found = false;
     for op in tx.operations.iter_mut() {
@@ -233,21 +280,33 @@ pub fn sign_envelope(
             continue;
         };
         for entry in invoke.auth.iter_mut() {
-            let credentials = match &mut entry.credentials {
-                xdr::SorobanCredentials::Address(c) | xdr::SorobanCredentials::AddressV2(c) => c,
+            // Cada tipo de credenciales tiene su propio payload de firma. Confundirlos
+            // produce una transicion que la red rechaza con `txBAD_AUTH`, asi que se
+            // resuelve explicitamente por tipo.
+            match &mut entry.credentials {
+                xdr::SorobanCredentials::Address(creds) => {
+                    if creds.address != engine {
+                        continue;
+                    }
+                    creds.signature = legacy_auth_signature(signer, &payload_hash)?;
+                    found = true;
+                }
+                xdr::SorobanCredentials::AddressV2(creds) => {
+                    if creds.address != engine {
+                        continue;
+                    }
+                    let sig = v2_auth_signature(signer, network_id, creds, &entry.root_invocation)?;
+                    creds.signature = sig;
+                    found = true;
+                }
                 _ => continue,
-            };
-            if credentials.address != engine {
-                continue;
             }
-            credentials.signature = signature.clone();
-            found = true;
         }
     }
-    if !found {
+    if !found && REQUIRES_SOROBAN_AUTH.contains(&fn_name) {
         return Err(AgentError::Network(format!(
             "la simulacion no devolvio credenciales para el engine {}; \
-             no se puede firmar {ATTEST_FN}",
+             no se puede firmar {fn_name}",
             signer.address()
         )));
     }
@@ -311,6 +370,169 @@ pub fn signature_payload_hash(
     let mut out = [0u8; 32];
     out.copy_from_slice(&digest);
     Ok(out)
+}
+
+/// Simbolo del topic del evento `Attested`.
+///
+/// Un `#[contractevent] struct` publica el nombre del evento como primer topic y deja
+/// los campos `#[topic]` en los siguientes; `Attested` no tiene campos topic, asi que
+/// lleva solo el nombre. Los campos sin `#[topic]` van en el `Map` de datos.
+pub const ATTESTED_TOPIC: &str = "attested";
+
+/// Confirma que una transacion emitio `Attested` con el outcome y el `report_hash` que
+/// el engine pretendia.
+///
+/// No basta con que la tx tenga estado `SUCCESS` ni con que el contrato acabe en
+/// `Attested*`: ambos pueden ocurrir sin que este engine haya sido quien atestiguo.
+/// El evento es la prueba de que la atestacion salio de esta cuenta, y el
+/// `report_hash` del evento es el lazo que une la cadena con el reporte determinista.
+pub fn find_attested_event(
+    events: &[xdr::ContractEvent],
+    contract_id: &[u8; 32],
+    outcome: AttestationOutcome,
+    report_hash: &[u8; 32],
+) -> Result<()> {
+    let want_topic = ScVal::Symbol(
+        ATTESTED_TOPIC
+            .try_into()
+            .map_err(|_| AgentError::Xdr("el simbolo del evento no es valido".into()))?,
+    );
+    let expected = xdr::Hash(*report_hash);
+
+    for event in events {
+        // Un evento de otro contrato no cuenta aunque traiga el mismo simbolo.
+        let xdr::ContractEventBody::V0(body) = &event.body;
+        let Some(xdr::ContractId(id)) = event.contract_id.as_ref() else {
+            continue;
+        };
+        if id.0 != *contract_id {
+            continue;
+        }
+        if body.topics.first() != Some(&want_topic) {
+            continue;
+        }
+        // Topics extra indicarian que el evento cambio de forma.
+        if body.topics.len() != 1 {
+            return Err(AgentError::Xdr(format!(
+                "{ATTESTED_TOPIC} deberia tener 1 topic y tiene {}",
+                body.topics.len()
+            )));
+        }
+        let data = &body.data;
+        if event_outcome(data)? != outcome {
+            return Err(AgentError::Network(format!(
+                "el evento {ATTESTED_TOPIC} declara un outcome distinto al enviado"
+            )));
+        }
+        if event_report_hash(data)? != expected {
+            return Err(AgentError::Network(format!(
+                "el evento {ATTESTED_TOPIC} lleva un report_hash distinto al firmado"
+            )));
+        }
+        return Ok(());
+    }
+
+    Err(AgentError::Network(format!(
+        "la transaccion no emitio {ATTESTED_TOPIC} para el contrato; no se puede \
+         afirmar que la atestacion se registro"
+    )))
+}
+
+/// Lee el campo `outcome` del `Map` de datos del evento.
+///
+/// Un enum de `contracttype` se serializa como `Vec([Symbol(nombre)])`.
+fn event_outcome(data: &ScVal) -> Result<AttestationOutcome> {
+    let val = event_field(data, "outcome")?;
+    let ScVal::Vec(Some(items)) = val else {
+        return Err(AgentError::Xdr(format!("outcome no es Vec: {val:?}")));
+    };
+    let Some(ScVal::Symbol(name)) = items.first() else {
+        return Err(AgentError::Xdr("outcome no empieza por Symbol".into()));
+    };
+    let name = std::str::from_utf8(name.0.as_slice())
+        .map_err(|_| AgentError::Xdr("el outcome del evento no es utf-8".into()))?;
+    match name {
+        "Pass" => Ok(AttestationOutcome::Pass),
+        "Fail" => Ok(AttestationOutcome::Fail),
+        other => Err(AgentError::Xdr(format!("outcome desconocido: {other}"))),
+    }
+}
+
+/// Lee el campo `report_hash` del `Map` de datos del evento.
+fn event_report_hash(data: &ScVal) -> Result<xdr::Hash> {
+    let val = event_field(data, "report_hash")?;
+    let ScVal::Bytes(b) = val else {
+        return Err(AgentError::Xdr(format!("report_hash no es Bytes: {val:?}")));
+    };
+    let slice: &[u8] = b.0.as_ref();
+    if slice.len() != 32 {
+        return Err(AgentError::Xdr(format!(
+            "report_hash del evento deberia tener 32 bytes y tiene {}",
+            slice.len()
+        )));
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(slice);
+    Ok(xdr::Hash(out))
+}
+
+/// Busca un campo por nombre en el `Map` de datos del evento.
+fn event_field<'a>(data: &'a ScVal, name: &str) -> Result<&'a ScVal> {
+    let ScVal::Map(Some(entries)) = data else {
+        return Err(AgentError::Xdr(format!(
+            "los datos del evento no son Map: {data:?}"
+        )));
+    };
+    let key: xdr::ScSymbol = name
+        .try_into()
+        .map_err(|_| AgentError::Xdr(format!("campo de evento invalido: {name}")))?;
+    entries
+        .0
+        .iter()
+        .find(|e| e.key == ScVal::Symbol(key.clone()))
+        .map(|e| &e.val)
+        .ok_or_else(|| AgentError::Xdr(format!("el evento no trae el campo {name}")))
+}
+
+/// Firma de las credenciales `SOROBAN_CREDENTIALS_ADDRESS` (v1).
+///
+/// El payload es el de la transaccion, sin mas: es el comportamiento historico y lo
+/// que el host espera de este tipo de credenciales.
+fn legacy_auth_signature(signer: &EngineSigner, payload_hash: &[u8; 32]) -> Result<ScVal> {
+    signature_scval(signer, payload_hash)
+}
+
+/// Firma de las credenciales `SOROBAN_CREDENTIALS_ADDRESS_V2`.
+///
+/// A diferencia de la v1, estas credenciales **no** se firman con el payload de la
+/// transaccion: el protocolo 27 (CAP-71-02) exige el preimage
+/// `ENVELOPE_TYPE_SOROBAN_AUTHORIZATION_WITH_ADDRESS`, que ademas ata la direccion a la
+/// firma para impedir reutilizarla entre cuentas que compartan clave.
+///
+/// Firmarlas con el payload de la transaccion, como hace la v1, produce una
+/// transicion que la red rechaza con `txBAD_AUTH` en cuanto el RPC entrega credenciales
+/// v2, que es el comportamiento por defecto desde el protocolo 28.
+fn v2_auth_signature(
+    signer: &EngineSigner,
+    network_id: &xdr::Hash,
+    creds: &xdr::SorobanAddressCredentials,
+    invocation: &xdr::SorobanAuthorizedInvocation,
+) -> Result<ScVal> {
+    let preimage = xdr::HashIdPreimage::SorobanAuthorizationWithAddress(
+        xdr::HashIdPreimageSorobanAuthorizationWithAddress {
+            network_id: network_id.clone(),
+            nonce: creds.nonce,
+            signature_expiration_ledger: creds.signature_expiration_ledger,
+            address: creds.address.clone(),
+            invocation: invocation.clone(),
+        },
+    );
+    let bytes = preimage
+        .to_xdr(Limits::none())
+        .map_err(|e| AgentError::Xdr(format!("HashIDPreimage: {e}")))?;
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(&bytes);
+    signature_scval(signer, &digest)
 }
 
 /// Enlace al explorer de la transaccion, para el log del keeper y la demo.
@@ -387,7 +609,15 @@ mod tests {
                 fallback_split_bps: 0,
             },
             evidence_bundle_hash: on_chain_hash,
+            report_hash: None,
             attestation_deadline: Some(1_000),
+            funded_at: Some(0),
+            submission_deadline: Some(500),
+            objection_deadline: None,
+            correction_deadline: None,
+            resolution_deadline: None,
+            disputed_at: None,
+            correction_attempts: 0,
             ledger: 5,
             ledger_timestamp: ts,
         }
@@ -689,7 +919,8 @@ mod tests {
         .unwrap();
         let (data, auth) = simulation_for(&engine);
         apply_simulation(&mut tx, data, auth).unwrap();
-        let signed = sign_envelope(&s, &tx, &network_id_hash(TESTNET_PASSPHRASE)).unwrap();
+        let signed =
+            sign_envelope(&s, &tx, &network_id_hash(TESTNET_PASSPHRASE), ATTEST_FN).unwrap();
 
         let xdr::TransactionEnvelope::Tx(v1) = &signed else {
             panic!("esperaba V1")
@@ -763,7 +994,8 @@ mod tests {
         .unwrap();
         let (data, auth) = simulation_for(&other);
         apply_simulation(&mut tx, data, auth).unwrap();
-        let err = sign_envelope(&s, &tx, &network_id_hash(TESTNET_PASSPHRASE)).unwrap_err();
+        let err =
+            sign_envelope(&s, &tx, &network_id_hash(TESTNET_PASSPHRASE), ATTEST_FN).unwrap_err();
         assert!(
             err.to_string().contains("no devolvio credenciales"),
             "{err}"
@@ -780,5 +1012,282 @@ mod tests {
             expected_state_after(AttestationOutcome::Fail),
             EscrowState::AttestedFail
         );
+    }
+
+    // --- Confirmacion del evento Attested -----------------------------------
+    //
+    // Los eventos se construyen con la misma forma que emite el SDK 27: topic
+    // `attested` y un `Map` con `outcome` (enum como Vec[Symbol]) y `report_hash`.
+
+    const TEST_CONTRACT: [u8; 32] = [5u8; 32];
+
+    fn event_data(outcome: &str, report_hash: [u8; 32]) -> ScVal {
+        let entries: Vec<(ScVal, ScVal)> = vec![
+            (
+                ScVal::Symbol("outcome".try_into().unwrap()),
+                ScVal::Vec(Some(xdr::ScVec(
+                    vec_one(ScVal::Symbol(outcome.try_into().unwrap())).unwrap(),
+                ))),
+            ),
+            (
+                ScVal::Symbol("report_hash".try_into().unwrap()),
+                ScVal::Bytes(xdr::ScBytes(
+                    xdr::BytesM::try_from(report_hash.to_vec()).unwrap(),
+                )),
+            ),
+        ];
+        ScVal::Map(Some(
+            xdr::ScMap::sorted_from_pairs(entries.into_iter()).unwrap(),
+        ))
+    }
+
+    fn attested_event(
+        contract: [u8; 32],
+        outcome: &str,
+        report_hash: [u8; 32],
+    ) -> xdr::ContractEvent {
+        xdr::ContractEvent {
+            ext: xdr::ExtensionPoint::V0,
+            type_: xdr::ContractEventType::Contract,
+            contract_id: Some(xdr::ContractId(xdr::Hash(contract))),
+            body: xdr::ContractEventBody::V0(xdr::ContractEventV0 {
+                topics: xdr::VecM::try_from(vec![ScVal::Symbol(
+                    ATTESTED_TOPIC.try_into().unwrap(),
+                )])
+                .unwrap(),
+                data: event_data(outcome, report_hash),
+            }),
+        }
+    }
+
+    #[test]
+    fn accepts_matching_attested_event() {
+        let ev = attested_event(TEST_CONTRACT, "Pass", [9u8; 32]);
+        find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Pass, &[9u8; 32]).unwrap();
+    }
+
+    #[test]
+    fn accepts_fail_event() {
+        let ev = attested_event(TEST_CONTRACT, "Fail", [3u8; 32]);
+        find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Fail, &[3u8; 32]).unwrap();
+    }
+
+    #[test]
+    fn rejects_event_from_another_contract() {
+        // Mismo simbolo y mismos datos, pero de otro contrato: no es nuestra
+        // atestacion aunque parezca identica.
+        let ev = attested_event([6u8; 32], "Pass", [9u8; 32]);
+        let err = find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Pass, &[9u8; 32])
+            .unwrap_err();
+        assert!(format!("{err}").contains("no emitio"));
+    }
+
+    #[test]
+    fn rejects_wrong_report_hash() {
+        // Es el lazo con el reporte determinista: si el hash del evento no es el
+        // firmado, la atestacion no es la que se evaluo.
+        let ev = attested_event(TEST_CONTRACT, "Pass", [9u8; 32]);
+        let err = find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Pass, &[1u8; 32])
+            .unwrap_err();
+        assert!(format!("{err}").contains("report_hash distinto"));
+    }
+
+    #[test]
+    fn rejects_wrong_outcome() {
+        let ev = attested_event(TEST_CONTRACT, "Fail", [9u8; 32]);
+        let err = find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Pass, &[9u8; 32])
+            .unwrap_err();
+        assert!(format!("{err}").contains("outcome distinto"));
+    }
+
+    #[test]
+    fn rejects_missing_event() {
+        let err = find_attested_event(&[], &TEST_CONTRACT, AttestationOutcome::Pass, &[9u8; 32])
+            .unwrap_err();
+        assert!(format!("{err}").contains("no se puede"));
+    }
+
+    #[test]
+    fn ignores_unrelated_topics() {
+        // Un `Funded` o `EvidenceSubmitted` no debe confundirse con `Attested`.
+        let mut ev = attested_event(TEST_CONTRACT, "Pass", [9u8; 32]);
+        let xdr::ContractEventBody::V0(body) = &mut ev.body;
+        body.topics = xdr::VecM::try_from(vec![ScVal::Symbol(
+            "evidence_submitted".try_into().unwrap(),
+        )])
+        .unwrap();
+        assert!(
+            find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Pass, &[9u8; 32])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_event_with_extra_topics() {
+        // Si el evento gana un campo `#[topic]`, la forma cambio y hay que revisarlo.
+        let mut ev = attested_event(TEST_CONTRACT, "Pass", [9u8; 32]);
+        let xdr::ContractEventBody::V0(body) = &mut ev.body;
+        let mut topics = body.topics.to_vec();
+        topics.push(ScVal::U32(1));
+        body.topics = xdr::VecM::try_from(topics).unwrap();
+        let err = find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Pass, &[9u8; 32])
+            .unwrap_err();
+        assert!(format!("{err}").contains("1 topic"));
+    }
+
+    #[test]
+    fn rejects_event_with_unknown_outcome_name() {
+        let ev = attested_event(TEST_CONTRACT, "Maybe", [9u8; 32]);
+        let err = find_attested_event(&[ev], &TEST_CONTRACT, AttestationOutcome::Pass, &[9u8; 32])
+            .unwrap_err();
+        assert!(format!("{err}").contains("desconocido"));
+    }
+
+    // --- CAP-71-02: credenciales de direccion v2 -----------------------------
+    //
+    // Las credenciales v1 y v2 se parecen en el tipo pero NO en el payload de
+    // firma. Compartirlos es un error silencioso que la red manifiesta como
+    // txBAD_AUTH mucho despues, cuando ya se creia que la transaccion era valida.
+
+    /// Entrada de autorizacion con credenciales de la variante pedida.
+    fn auth_entry(creds: xdr::SorobanCredentials) -> xdr::SorobanAuthorizationEntry {
+        xdr::SorobanAuthorizationEntry {
+            credentials: creds,
+            root_invocation: xdr::SorobanAuthorizedInvocation {
+                function: xdr::SorobanAuthorizedFunction::ContractFn(xdr::InvokeContractArgs {
+                    contract_address: xdr::ScAddress::Contract(xdr::ContractId(xdr::Hash(
+                        [3u8; 32],
+                    ))),
+                    function_name: "attest".try_into().unwrap(),
+                    args: xdr::VecM::default(),
+                }),
+                sub_invocations: xdr::VecM::default(),
+            },
+        }
+    }
+
+    fn creds_v2(address: xdr::ScAddress) -> xdr::SorobanCredentials {
+        xdr::SorobanCredentials::AddressV2(xdr::SorobanAddressCredentials {
+            address,
+            nonce: 7,
+            signature_expiration_ledger: 100,
+            signature: ScVal::Void,
+        })
+    }
+
+    /// Extrae la firma que quedo en las credenciales.
+    fn stored_signature(creds: &xdr::SorobanCredentials) -> ScVal {
+        match creds {
+            xdr::SorobanCredentials::Address(c) | xdr::SorobanCredentials::AddressV2(c) => {
+                c.signature.clone()
+            }
+            _ => panic!("no son credenciales de direccion"),
+        }
+    }
+
+    /// Bytes de la firma guardada, para compararla con una firma calculada.
+    fn signature_bytes(sig: &ScVal) -> [u8; 64] {
+        let ScVal::Vec(Some(items)) = sig else {
+            panic!("la firma no es Vec")
+        };
+        let ScVal::Bytes(b) = &items.0[0] else {
+            panic!("la firma no es Bytes")
+        };
+        let mut out = [0u8; 64];
+        out.copy_from_slice(b.0.as_ref());
+        out
+    }
+
+    #[test]
+    fn v1_and_v2_credentials_produce_different_signatures() {
+        // Si ambos dieran la misma firma, el agente estaria firmando v2 con el
+        // payload de la transaccion: exactamente el fallo que describe CAP-71-02.
+        let s = signer();
+        let address: xdr::ScAddress = s.address().parse().unwrap();
+        let network_id = xdr::Hash([1u8; 32]);
+
+        let entry_v2 = auth_entry(creds_v2(address.clone()));
+        let xdr::SorobanCredentials::AddressV2(creds_v2c) = &entry_v2.credentials else {
+            panic!("se esperaban credenciales v2")
+        };
+        let v1 = legacy_auth_signature(&s, &[9u8; 32]).unwrap();
+        let v2 = v2_auth_signature(&s, &network_id, creds_v2c, &entry_v2.root_invocation).unwrap();
+
+        assert_ne!(
+            signature_bytes(&v1),
+            signature_bytes(&v2),
+            "v1 y v2 no pueden firmarse con el mismo payload"
+        );
+    }
+
+    #[test]
+    fn v2_signature_is_over_the_address_bound_preimage() {
+        // La firma v2 debe verificar contra sha256(HashIDPreimage) y NO contra el
+        // payload de la transaccion.
+        use ed25519_dalek::Verifier;
+        let s = signer();
+        let address: xdr::ScAddress = s.address().parse().unwrap();
+        let network_id = xdr::Hash([4u8; 32]);
+        let entry = auth_entry(creds_v2(address.clone()));
+        let xdr::SorobanCredentials::AddressV2(creds) = &entry.credentials else {
+            panic!()
+        };
+        let sig = v2_auth_signature(&s, &network_id, creds, &entry.root_invocation).unwrap();
+        let bytes = signature_bytes(&sig);
+
+        let preimage = xdr::HashIdPreimage::SorobanAuthorizationWithAddress(
+            xdr::HashIdPreimageSorobanAuthorizationWithAddress {
+                network_id: network_id.clone(),
+                nonce: creds.nonce,
+                signature_expiration_ledger: creds.signature_expiration_ledger,
+                address: address.clone(),
+                invocation: entry.root_invocation.clone(),
+            },
+        );
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(
+            preimage
+                .to_xdr(Limits::none())
+                .expect("preimage serializable"),
+        );
+        let vk = ed25519_dalek::VerifyingKey::from_bytes(&s.public_key_bytes()).unwrap();
+        assert!(
+            vk.verify(&digest, &ed25519_dalek::Signature::from_bytes(&bytes))
+                .is_ok(),
+            "la firma v2 debe verificar contra el preimage con direccion"
+        );
+    }
+
+    #[test]
+    fn signing_an_envelope_with_v2_credentials_installs_the_v2_signature() {
+        let s = signer();
+        let address: xdr::ScAddress = s.address().parse().unwrap();
+        let mut tx = build_invoke_tx(
+            &xdr::ScAddress::Contract(xdr::ContractId(xdr::Hash([3u8; 32]))),
+            &xdr::MuxedAccount::Ed25519(s.public_key_bytes().into()),
+            1,
+            AttestationOutcome::Pass,
+            &[9u8; 32],
+        )
+        .unwrap();
+        // Se anteponen credenciales v2 devueltas por una simulacion.
+        let mut op = tx.operations.first().unwrap().clone();
+        let xdr::OperationBody::InvokeHostFunction(invoke) = &mut op.body else {
+            panic!()
+        };
+        invoke.auth = xdr::VecM::try_from(vec![auth_entry(creds_v2(address))]).unwrap();
+        tx.operations = xdr::VecM::try_from(vec![op]).unwrap();
+
+        let network_id = xdr::Hash([1u8; 32]);
+        let envelope = sign_envelope(&s, &tx, &network_id, ATTEST_FN).unwrap();
+        let xdr::TransactionEnvelope::Tx(v1) = envelope else {
+            panic!()
+        };
+        let op = v1.tx.operations.first().unwrap();
+        let xdr::OperationBody::InvokeHostFunction(invoke) = &op.body else {
+            panic!()
+        };
+        let stored = stored_signature(&invoke.auth.first().unwrap().credentials);
+        assert_ne!(stored, ScVal::Void, "la credencial debe quedar firmada");
     }
 }

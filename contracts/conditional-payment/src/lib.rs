@@ -26,7 +26,7 @@ use crate::events::{
     Approved, Attested, Cancelled, DisputeRaised, EscrowCreated, EvidenceSubmitted, Finalized,
     Funded, Resolved,
 };
-use crate::types::{DataKey, Error};
+use crate::types::{DataKey, Error, EscrowSnapshot};
 
 fn read_config(env: &Env) -> EscrowConfig {
     env.storage()
@@ -682,6 +682,52 @@ impl ConditionalPayment {
 
     pub fn config(env: Env) -> EscrowConfig {
         read_config(&env)
+    }
+
+    /// Instantanea completa en una sola llamada.
+    ///
+    /// Es la lectura que consume el agente de atestacion: `state()` y `config()`
+    /// no exponen los plazos ni los hashes, y leerlos de `config()` por posicion
+    /// obliga a quien lee a conocer el orden de los campos. Este getter devuelve
+    /// cada dato con nombre, incluyendo los plazos derivados (`objection_deadline`,
+    /// `correction_deadline`) y el timestamp del ledger, para que la decision se
+    /// tome contra el mismo reloj con el que el contrato aplica los vencimientos.
+    ///
+    /// No cambia de estado ni exige `auth`: es una vista.
+    pub fn snapshot(env: Env) -> EscrowSnapshot {
+        let config = read_config(&env);
+        let state = read_state(&env);
+        let now = env.ledger().timestamp();
+        let get = |key: DataKey| -> Option<u64> { env.storage().instance().get(&key) };
+        let get_hash = |key: DataKey| -> Option<BytesN<32>> { env.storage().instance().get(&key) };
+        // `CorrectionAttempts` se guardo como u32, asi que no puede leerse con
+        // el lector de plazos.
+        let get_u32 = |key: DataKey| -> Option<u32> { env.storage().instance().get(&key) };
+
+        let attested_at: Option<u64> = get(DataKey::AttestedAt);
+        // Plazos derivados con la misma aritmetica con la que el contrato los
+        // aplica: objecion y correccion cuelgan de `attested_at`.
+        let objection_deadline = attested_at.and_then(|a| a.checked_add(config.objection_period));
+        let correction_deadline = attested_at.and_then(|a| a.checked_add(config.correction_period));
+
+        EscrowSnapshot {
+            state,
+            config,
+            evidence_bundle_hash: get_hash(DataKey::EvidenceBundleHash),
+            report_hash: get_hash(DataKey::ReportHash),
+            funded_at: get(DataKey::FundedAt),
+            submission_deadline: get(DataKey::SubmissionDeadline),
+            attestation_deadline: get(DataKey::AttestationDeadline),
+            attested_at,
+            objection_deadline,
+            correction_deadline,
+            disputed_at: get(DataKey::DisputedAt),
+            resolution_deadline: get(DataKey::ResolutionDeadline),
+            correction_attempts: get_u32(DataKey::CorrectionAttempts).unwrap_or(0),
+            dispute_reason_hash: get_hash(DataKey::DisputeReasonHash),
+            dispute_evidence_hash: get_hash(DataKey::DisputeEvidenceHash),
+            ledger_timestamp: now,
+        }
     }
 }
 

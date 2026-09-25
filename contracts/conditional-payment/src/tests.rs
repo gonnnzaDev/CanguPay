@@ -1817,3 +1817,144 @@ fn fallback_release_refund_split_and_rounding_large_amount_and_deadline_edges() 
         AMOUNT
     );
 }
+
+// ---------------------------------------------------------------------------
+// snapshot(): la lectura que consume el agente de atestación.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn snapshot_exposes_config_sin_posiciones() {
+    let ctx = setup(true);
+    ctx.initialize();
+    let snap = ctx.client().snapshot();
+
+    // El agente necesita monto, token y ventana de atestación; antes tenía que
+    // adivinar el orden de los campos dentro del ScVec de Config.
+    assert_eq!(snap.state, EscrowState::Created);
+    assert_eq!(snap.config.amount, AMOUNT);
+    assert_eq!(snap.config.token, ctx.token);
+    assert_eq!(snap.config.engine, ctx.engine);
+    assert_eq!(snap.config.attestation_period, ATTESTATION_PERIOD);
+    assert_eq!(snap.ledger_timestamp, ctx.env.ledger().timestamp());
+}
+
+#[test]
+fn snapshot_en_created_no_inventa_plazos_ni_hashes() {
+    let ctx = setup(true);
+    ctx.initialize();
+    let snap = ctx.client().snapshot();
+
+    // Antes de fondear no existe deadline de nada: afirmar que existe
+    // invitaba a un motor a calcular plazos sobre un plazo inventado.
+    assert_eq!(snap.evidence_bundle_hash, None);
+    assert_eq!(snap.report_hash, None);
+    assert_eq!(snap.submission_deadline, None);
+    assert_eq!(snap.attestation_deadline, None);
+    assert_eq!(snap.correction_attempts, 0);
+}
+
+#[test]
+fn snapshot_refleja_evidence_submitted() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.env.ledger().set_timestamp(FUNDED_AT + 10);
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+
+    let snap = ctx.client().snapshot();
+    assert_eq!(snap.state, EscrowState::EvidenceSubmitted);
+    assert_eq!(snap.evidence_bundle_hash, Some(evidence_hash(&ctx.env)));
+    // El plazo de atestación cuelga del momento real de la entrega, no del fondeo.
+    assert_eq!(
+        snap.attestation_deadline,
+        Some(FUNDED_AT + 10 + ATTESTATION_PERIOD)
+    );
+    assert_eq!(
+        snap.submission_deadline,
+        Some(FUNDED_AT + SUBMISSION_PERIOD)
+    );
+    assert_eq!(snap.funded_at, Some(FUNDED_AT));
+}
+
+#[test]
+fn snapshot_deriva_objection_y_correction_de_attested_at() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.env.ledger().set_timestamp(FUNDED_AT + 10);
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.env.ledger().set_timestamp(FUNDED_AT + 20);
+    ctx.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx.env));
+
+    let snap = ctx.client().snapshot();
+    assert_eq!(snap.state, EscrowState::AttestedPass);
+    assert_eq!(snap.report_hash, Some(report_hash(&ctx.env)));
+    assert_eq!(snap.attested_at, Some(FUNDED_AT + 20));
+    assert_eq!(
+        snap.objection_deadline,
+        Some(FUNDED_AT + 20 + OBJECTION_PERIOD)
+    );
+    assert_eq!(
+        snap.correction_deadline,
+        Some(FUNDED_AT + 20 + CORRECTION_PERIOD)
+    );
+}
+
+#[test]
+fn snapshot_registra_correction_attempts_tras_corregir() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.env.ledger().set_timestamp(FUNDED_AT + 10);
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.env.ledger().set_timestamp(FUNDED_AT + 20);
+    ctx.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx.env));
+    assert_eq!(ctx.client().snapshot().correction_attempts, 0);
+
+    let corrected = BytesN::from_array(&ctx.env, &[21u8; 32]);
+    ctx.env.ledger().set_timestamp(FUNDED_AT + 30);
+    ctx.client().submit_evidence(&corrected);
+
+    // Tras la corrección el bundle nuevo es el que el motor debe evaluar, y el
+    // contador deja claro que ya se consumió el único intento.
+    let snap = ctx.client().snapshot();
+    assert_eq!(snap.state, EscrowState::EvidenceSubmitted);
+    assert_eq!(snap.evidence_bundle_hash, Some(corrected));
+    assert_eq!(snap.correction_attempts, 1);
+}
+
+#[test]
+fn snapshot_expone_disputa_sin_perder_el_report_hash() {
+    let ctx = setup(true);
+    ctx.to_attested_pass();
+    let reason = BytesN::from_array(&ctx.env, &[10u8; 32]);
+    let evid = BytesN::from_array(&ctx.env, &[11u8; 32]);
+    ctx.client().raise_dispute(&reason, &evid);
+
+    let snap = ctx.client().snapshot();
+    assert_eq!(snap.state, EscrowState::Disputed);
+    assert_eq!(snap.dispute_reason_hash, Some(reason));
+    assert_eq!(snap.dispute_evidence_hash, Some(evid));
+    // El reporte sigue siendo la traza de lo que el engine dijo, aunque ya no
+    // sea el estado vigente: es evidencia de auditoría, no estado actual.
+    assert_eq!(snap.report_hash, Some(report_hash(&ctx.env)));
+}
+
+#[test]
+fn snapshot_es_estable_tras_finalizar() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + SUBMISSION_PERIOD);
+    ctx.client().finalize();
+
+    let snap = ctx.client().snapshot();
+    assert_eq!(snap.state, EscrowState::Refunded);
+    // Un escrow cerrado ya no es atestestable y no debe seguir anunciando plazo.
+    assert_eq!(snap.attestation_deadline, None);
+    assert_eq!(snap.evidence_bundle_hash, None);
+}

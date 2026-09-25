@@ -30,6 +30,7 @@ Comandos:
   status                 muestra el estado real del contrato
   attest                 firma y envia attest() tras comprobar estado, plazo y hash
   keeper                 vigila el contrato y atesta cuando la evidencia esta lista
+  finalize               llama a finalize(); el contrato decide si el plazo vencio
 
 Opciones:
   --bundle <ruta>        bundle de evidencia en JSON (o CANGUPA_BUNDLE)
@@ -39,6 +40,7 @@ Opciones:
   --rpc <url>            endpoint RPC (o CANGUPA_RPC_URL)
   --network <pass>       passphrase de red (o CANGUPA_NETWORK)
   --poll <segundos>      espera del keeper, por defecto 10
+  --finalize             el keeper tambien llama a finalize() al detectar un vencimiento
   --json                 salida en JSON
   -h, --help             esta ayuda
 ";
@@ -68,6 +70,7 @@ fn run(args: &[String]) -> Result<ExitCode> {
         "status" => status(&opts),
         "attest" => attest(&opts),
         "keeper" => keep(&opts),
+        "finalize" => finalize(&opts),
         other => Err(AgentError::Config(format!(
             "comando desconocido: {other}; usa --help"
         ))),
@@ -83,6 +86,7 @@ struct Options {
     rpc: Option<String>,
     network: Option<String>,
     poll: u64,
+    finalize: bool,
     json: bool,
 }
 
@@ -96,6 +100,7 @@ impl Options {
             rpc: None,
             network: None,
             poll: 10,
+            finalize: false,
             json: false,
         };
         let mut i = 0;
@@ -125,6 +130,7 @@ impl Options {
                         .parse::<u64>()
                         .map_err(|_| AgentError::Config("--poll debe ser un entero".into()))?;
                 }
+                "--finalize" => opts.finalize = true,
                 "--json" => opts.json = true,
                 other => return Err(AgentError::Config(format!("opcion desconocida: {other}"))),
             }
@@ -315,11 +321,16 @@ fn keep(opts: &Options) -> Result<ExitCode> {
         expected_currency: opts.currency.clone(),
         poll_interval: std::time::Duration::from_secs(opts.poll),
         max_iterations: None,
+        // El contrato conserva la autoridad sobre los vencimientos: el keeper solo
+        // llama a `finalize()` cuando cree que se cumple uno, y es el contrato el
+        // que decide si lo es.
+        finalize_on_expiry: opts.finalize,
     };
     println!(
-        "keeper: vigilando {} cada {}s",
+        "keeper: vigilando {} cada {}s{}",
         chain.contract_id(),
-        opts.poll
+        opts.poll,
+        if opts.finalize { " (con finalize)" } else { "" }
     );
     let report = keeper::run(&chain, &config)?;
     for step in &report.steps {
@@ -338,9 +349,36 @@ fn keep(opts: &Options) -> Result<ExitCode> {
             } => {
                 println!("  atestado {outcome:?} en {tx}; estado {state_after}")
             }
+            KeeperStep::Closed { state } => println!("  cerrado: {state}"),
+            KeeperStep::Finalized { state } => println!("  vencido y liquidado: {state}"),
+            KeeperStep::Transient { error } => println!("  reintentando: {error}"),
         }
     }
-    println!("keeper: {} atestaciones enviadas", report.attested);
+    if let Some(why) = &report.stopped_because {
+        println!("keeper: deja de vigilar ({why})");
+    }
+    println!(
+        "keeper: {} atestaciones enviadas, {} liquidaciones, {} lecturas con fallo",
+        report.attested, report.finalized, report.transient
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Llama a `finalize()` una vez.
+///
+/// El contrato es quien decide si el plazo vencio: si responde `NotFinalizableYet` el
+/// comando falla con ese error en vez de forzar nada. Se imprime el estado resultante.
+fn finalize(opts: &Options) -> Result<ExitCode> {
+    let chain = opts.require_chain()?;
+    let state = chain.finalize()?;
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::json!({ "finalized": true, "state": state.to_string() })
+        );
+    } else {
+        println!("estado tras finalize(): {state}");
+    }
     Ok(ExitCode::SUCCESS)
 }
 

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use stellar_xdr as xdr;
 use stellar_xdr::ScVal;
-use stellar_xdr::{Limits, ReadXdr, TransactionEnvelope, WriteXdr};
+use stellar_xdr::{Limits, TransactionEnvelope, WriteXdr};
 
 use crate::attest::ATTEST_FN;
 use crate::error::{AgentError, Result};
@@ -117,6 +117,11 @@ pub struct EscrowConfigView {
 }
 
 /// Instantanea del escrow, tal y como esta en la cadena.
+///
+/// Los datos vienen del getter `snapshot()` del contrato, no de leer su
+/// almacenamiento: el getter es la ABI estable y nombra cada campo, asi que
+/// reordenar `EscrowConfig` no rompe al agente. El orden de los campos dentro
+/// del `ScVec` es un detalle de serializacion que solo debe conocer el contrato.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EscrowSnapshot {
     /// Estado actual.
@@ -125,8 +130,24 @@ pub struct EscrowSnapshot {
     pub config: EscrowConfigView,
     /// Hash del bundle que el supplier ya subio a la cadena, si existe.
     pub evidence_bundle_hash: Option<[u8; 32]>,
+    /// Hash del reporte con el que el engine atestiguo, si ya atesto.
+    pub report_hash: Option<[u8; 32]>,
     /// Plazo de atestacion absoluto, si el estado ya lo fijo.
     pub attestation_deadline: Option<u64>,
+    /// Momento de la fundicion, si ocurrio.
+    pub funded_at: Option<u64>,
+    /// Plazo para que el buyer cancele o el supplier entregue evidencia.
+    pub submission_deadline: Option<u64>,
+    /// `attested_at + objection_period`, si el engine ya atesto.
+    pub objection_deadline: Option<u64>,
+    /// `attested_at + correction_period`, si el engine ya atesto.
+    pub correction_deadline: Option<u64>,
+    /// Plazo de resolucion de una disputa, si la hubo.
+    pub resolution_deadline: Option<u64>,
+    /// Momento de la disputa, si la hubo.
+    pub disputed_at: Option<u64>,
+    /// Veces que el supplier ya corrigio la evidencia (0 o 1 en P0-07).
+    pub correction_attempts: u32,
     /// Ledger actual, para decisiones de plazo.
     pub ledger: u32,
     /// Timestamp del ledger actual.
@@ -143,6 +164,12 @@ impl EscrowSnapshot {
     pub fn attestation_remaining(&self) -> Option<i64> {
         let deadline = self.attestation_deadline?;
         Some(deadline as i64 - self.ledger_timestamp as i64)
+    }
+
+    /// `true` si la evidencia fue corregida tras un FAIL: el motor debe volver a
+    /// evaluarla y el hash que evalua tiene que ser el nuevo.
+    pub fn is_correction(&self) -> bool {
+        self.correction_attempts > 0
     }
 }
 
@@ -179,6 +206,18 @@ pub trait ChainClient: Send + Sync {
         outcome: AttestationOutcome,
         report_hash: &[u8; 32],
     ) -> Result<SubmitOutcome>;
+    /// Firma y envia `finalize()`; el contrato decide si el escrow ya vencio.
+    ///
+    /// Se deja en `Err` cuando el propio contrato dice `NotFinalizableYet`. Esa
+    /// respuesta es la autoridad: el keeper **no** lleva su propia cuenta de plazos ni
+    /// decide por su cuenta que un escrow vencio, porque duplicar esa aritmetica en el
+    /// cliente es exactamente la forma de liquidar fondos antes de tiempo o de
+    /// quedarse bloqueado esperando un plazo que el contrato no aplica.
+    fn finalize(&self) -> Result<EscrowState> {
+        Err(AgentError::Config(
+            "el cliente no implementa finalize()".into(),
+        ))
+    }
 }
 
 /// Outcome que se manda a `attest()`.
@@ -202,6 +241,9 @@ impl AttestationOutcome {
 pub struct SorobanChain {
     rpc_url: String,
     contract: String,
+    /// Solo se usa para validar el strkey al construir: un `CANGUPA_CONTRACT_ID`
+    /// mal escrito falla al arrancar y no a mitad de una atestacion.
+    #[allow(dead_code)]
     contract_bytes: [u8; 32],
     network_passphrase: String,
 }
@@ -263,29 +305,112 @@ impl ChainClient for SorobanChain {
 }
 
 impl SorobanChain {
-    /// Firma y envia `attest`, y confirma releyendo el contrato.
+    /// Firma y envia `attest`, y confirma por evento, estado y `report_hash`.
     ///
-    /// Secuencia: simular con `authMode: record` para obtener recursos y credenciales,
-    /// firmar el payload que la red espera, enviar, esperar inclusion y **comprobar que el
-    /// estado quedo en `Attested*`**. Devolver exito sin esa comprobacion seria mentir.
+    /// El envio va por [`Self::invoke_and_confirm`], el mismo camino que usa
+    /// `finalize()`: simular con `authMode: record`, firmar el payload que la red
+    /// espera, enviar y esperar inclusion. Lo que distingue a una atestacion es la
+    /// confirmacion posterior, que son tres comprobaciones independientes.
     pub async fn submit_attestation_async(
         &self,
         outcome: AttestationOutcome,
         report_hash: &[u8; 32],
     ) -> Result<SubmitOutcome> {
+        let (hash, state_after) = self
+            .invoke_and_confirm(crate::attest::ATTEST_FN, |contract, source, seq| {
+                crate::attest::build_invoke_tx(contract, source, seq, outcome, report_hash)
+            })
+            .await?;
+
+        // Tres confirmaciones, y las tres tienen que concordar:
+        // 1. el evento `Attested`: que atestiguo esta cuenta y con que reporte.
+        //    Un tx en SUCCESS y un estado `Attested*` podrian venir de otra via.
+        // 2. el estado final esperado.
+        // 3. el `report_hash` que quedo registrado, que es el lazo con el motor.
+        let emitted = self.events_of(&hash).await?;
+        crate::attest::find_attested_event(&emitted, &self.contract_bytes, outcome, report_hash)?;
+
+        let expected = crate::attest::expected_state_after(outcome);
+        let after = self.snapshot_async().await?;
+        if after.state != expected || state_after != expected {
+            return Err(AgentError::InvalidState {
+                actual: after.state.to_string(),
+                operacion: format!("confirmar {ATTEST_FN} (tx {hash}, se esperaba {expected})"),
+            });
+        }
+        if after.report_hash != Some(*report_hash) {
+            return Err(AgentError::BundleHashMismatch {
+                computed: hex::encode(report_hash),
+                on_chain: after
+                    .report_hash
+                    .map(hex::encode)
+                    .unwrap_or_else(|| "<ninguno>".into()),
+            });
+        }
+        Ok(SubmitOutcome {
+            hash: TxHash(hash.to_string()),
+            state_after,
+        })
+    }
+
+    /// Firma y envia `finalize()`, y devuelve el estado en el que quedo el escrow.
+    ///
+    /// `finalize()` no exige `auth`: cualquiera puede ejecutarlo y el propio contrato
+    /// decide si el plazo vencio. El keeper **no** lleva su propia cuenta de plazos:
+    /// duplicar esa aritmetica en el cliente es la forma de liquidar fondos antes de
+    /// tiempo, o de quedarse esperando un plazo que el contrato no aplica. Si el
+    /// contrato responde `NotFinalizableYet`, ese error sube tal cual para que el
+    /// keeper lo distinga de un fallo de red.
+    pub async fn finalize_async(&self) -> Result<EscrowState> {
+        let (_hash, state_after) = self
+            .invoke_and_confirm(crate::attest::FINALIZE_FN, |contract, source, seq| {
+                crate::attest::build_finalize_tx(contract, source, seq)
+            })
+            .await?;
+        // La respuesta inmediata se contrasta con una relectura: si no coinciden,
+        // alguien toco el contrato entre medias y no se afirma un estado sin fundamento.
+        let after = self.snapshot_async().await?;
+        if after.state != state_after {
+            return Err(AgentError::InvalidState {
+                actual: after.state.to_string(),
+                operacion: format!(
+                    "confirmar {} (la tx dio {state_after}, la cadena muestra {})",
+                    crate::attest::FINALIZE_FN,
+                    after.state
+                ),
+            });
+        }
+        Ok(state_after)
+    }
+
+    /// Camino comun de invocacion: simular con `record`, firmar, enviar y esperar.
+    ///
+    /// `build` recibe contrato, cuenta fuente y numero de secuencia para montar la
+    /// transaccion; el resto es identico para cualquier funcion.
+    async fn invoke_and_confirm<F>(
+        &self,
+        fn_name: &str,
+        build: F,
+    ) -> Result<(xdr::Hash, EscrowState)>
+    where
+        F: Fn(&xdr::ScAddress, &xdr::MuxedAccount, i64) -> Result<xdr::Transaction>,
+    {
         use stellar_rpc_client::AuthMode;
 
         let signer = EngineSigner::from_env()?;
         let client = self.client()?;
-        let passphrase = client
-            .get_network()
-            .await
-            .map_err(|e| AgentError::Network(format!("getNetwork: {e}")))?
-            .passphrase;
+        // Se verifica **el passphrase configurado** contra la red. Comparar el
+        // passphrase del RPC consigo mismo no comprueba nada: firmaria con el id de
+        // red de otra red y la transaccion caeria con BAD_AUTH, o peor, se creeria
+        // estar en testnet estando en otra cosa.
         client
-            .verify_network_passphrase(Some(&passphrase))
+            .verify_network_passphrase(Some(&self.network_passphrase))
             .await
-            .map_err(|e| AgentError::Network(format!("passphrase inconsistente: {e}")))?;
+            .map_err(|e| {
+                AgentError::Network(format!(
+                    "el RPC no es la red esperada (passphrase configurada no coincide): {e}"
+                ))
+            })?;
 
         let account = client
             .get_account(&signer.address())
@@ -297,13 +422,7 @@ impl SorobanChain {
             .parse::<xdr::ScAddress>()
             .map_err(|e| AgentError::Config(format!("CANGUPA_CONTRACT_ID invalido: {e}")))?;
 
-        let mut tx = crate::attest::build_invoke_tx(
-            &contract,
-            &source,
-            account.seq_num.0,
-            outcome,
-            report_hash,
-        )?;
+        let mut tx = build(&contract, &source, account.seq_num.0)?;
 
         let simulation = client
             .simulate_transaction_envelope(
@@ -311,7 +430,7 @@ impl SorobanChain {
                 Some(AuthMode::Record),
             )
             .await
-            .map_err(|e| AgentError::Network(format!("simulateTransaction: {e}")))?;
+            .map_err(|e| AgentError::Network(format!("simulateTransaction({fn_name}): {e}")))?;
         let data = simulation.transaction_data().map_err(|e| {
             AgentError::Network(format!("la simulacion no devolvio sorobanData: {e}"))
         })?;
@@ -324,87 +443,135 @@ impl SorobanChain {
             .collect();
         crate::attest::apply_simulation(&mut tx, data, auth)?;
 
-        let network_id = crate::attest::network_id_hash(&passphrase);
-        let envelope = crate::attest::sign_envelope(&signer, &tx, &network_id)?;
+        let network_id = crate::attest::network_id_hash(&self.network_passphrase);
+        let envelope = crate::attest::sign_envelope(&signer, &tx, &network_id, fn_name)?;
 
         let hash = client
             .send_transaction(&envelope)
             .await
-            .map_err(|e| AgentError::Network(format!("sendTransaction: {e}")))?;
+            .map_err(|e| AgentError::Network(format!("sendTransaction({fn_name}): {e}")))?;
         let response = client
             .get_transaction_polling(&hash, None)
             .await
-            .map_err(|e| AgentError::Network(format!("getTransaction: {e}")))?;
+            .map_err(|e| AgentError::Network(format!("getTransaction({hash}): {e}")))?;
         if response.status != TX_SUCCESS {
             return Err(AgentError::Network(format!(
-                "la transaccion de {ATTEST_FN} no fue exitosa: estado {}",
+                "la transaccion de {fn_name} no fue exitosa: estado {}",
                 response.status
             )));
         }
+        let state_after = state_from_simulation(&simulation)?;
+        Ok((hash, state_after))
+    }
 
-        let expected = crate::attest::expected_state_after(outcome);
-        let state_after = self.snapshot_async().await?.state;
-        if state_after != expected {
-            return Err(AgentError::InvalidState {
-                actual: state_after.to_string(),
-                operacion: format!("confirmar {ATTEST_FN} (tx {hash}, se esperaba {expected})"),
-            });
+    /// Recupera los eventos de contrato de una transaccion ya incluida.
+    async fn events_of(&self, hash: &xdr::Hash) -> Result<Vec<xdr::ContractEvent>> {
+        let client = self.client()?;
+        let response = client
+            .get_transaction(hash)
+            .await
+            .map_err(|e| AgentError::Network(format!("getTransaction({hash}): {e}")))?;
+        if response.status != TX_SUCCESS {
+            return Err(AgentError::Network(format!(
+                "la transaccion {hash} no fue exitosa: estado {}",
+                response.status
+            )));
         }
-        Ok(SubmitOutcome {
-            hash: TxHash(hash.to_string()),
-            state_after,
-        })
+        Ok(response
+            .events
+            .contract_events
+            .iter()
+            .flatten()
+            .cloned()
+            .collect())
     }
 
     /// Lectura asincrona del estado real del contrato.
+    ///
+    /// Invoca el getter `snapshot()` por simulacion, que devuelve una sola
+    /// `EscrowSnapshot` con todos los campos con nombre. No se lee el
+    /// almacenamiento de instancia: ese `ScMap` es privado y su orden depende
+    /// de como el contrato declare sus `DataKey`.
     pub async fn snapshot_async(&self) -> Result<EscrowSnapshot> {
-        use stellar_rpc_client::LedgerEntryResult;
-
         let client = self.client()?;
-        let key = contract_instance_key(&self.contract_bytes);
-        let entries = client
-            .get_ledger_entries(&[key])
-            .await
-            .map_err(|e| rpc_error("getLedgerEntries", &e))?;
-        let entry: LedgerEntryResult = entries
-            .entries
-            .and_then(|mut v| {
-                if v.is_empty() {
-                    None
-                } else {
-                    Some(v.remove(0))
-                }
-            })
-            .ok_or_else(|| {
-                AgentError::Network(format!("no se encontro el contrato {}", self.contract))
-            })?;
-        let ledger_entry = xdr::LedgerEntryData::from_xdr_base64(&entry.xdr, Limits::none())
-            .map_err(|e| AgentError::Xdr(format!("LedgerEntryData: {e}")))?;
-        let xdr::LedgerEntryData::ContractData(contract_data) = ledger_entry else {
-            return Err(AgentError::Network("la entrada no es ContractData".into()));
-        };
-
-        let storage = read_instance_storage(&contract_data.val)?;
-        let state = read_state(&storage)?;
-        let config = read_config(&storage)?;
-        let evidence_bundle_hash = read_bytes_n(&storage, "EvidenceBundleHash")?;
-        let attestation_deadline = read_u64(&storage, "AttestationDeadline")?;
+        let sc = self.decode_snapshot(&client).await?;
 
         let ledger_info = client
             .get_latest_ledger()
             .await
             .map_err(|e| rpc_error("getLatestLedger", &e))?;
         let ledger_seq = ledger_info.sequence;
-        let ledger_ts = self.latest_ledger_timestamp(&client, ledger_seq).await?;
+        // El getter devuelve su propio `ledger_timestamp`; el de la RPC se usa
+        // solo para tener el numero de ledger, que el getter no expone.
+        let _close_time = self.latest_ledger_timestamp(&client, ledger_seq).await?;
 
         Ok(EscrowSnapshot {
-            state,
-            config,
-            evidence_bundle_hash,
-            attestation_deadline,
+            state: sc.state,
+            config: sc.config,
+            evidence_bundle_hash: sc.evidence_bundle_hash,
+            report_hash: sc.report_hash,
+            attestation_deadline: sc.attestation_deadline,
+            funded_at: sc.funded_at,
+            submission_deadline: sc.submission_deadline,
+            objection_deadline: sc.objection_deadline,
+            correction_deadline: sc.correction_deadline,
+            resolution_deadline: sc.resolution_deadline,
+            disputed_at: sc.disputed_at,
+            correction_attempts: sc.correction_attempts,
             ledger: ledger_seq,
-            ledger_timestamp: ledger_ts,
+            ledger_timestamp: sc.ledger_timestamp,
         })
+    }
+
+    /// Llama a `snapshot()` en el contrato y decodifica el `ScVal` devuelto.
+    async fn decode_snapshot(
+        &self,
+        client: &stellar_rpc_client::Client,
+    ) -> Result<ContractSnapshot> {
+        let contract: xdr::ScAddress = self
+            .contract
+            .parse::<xdr::ScAddress>()
+            .map_err(|e| AgentError::Config(format!("CANGUPA_CONTRACT_ID invalido: {e}")))?;
+        // Se simula con una cuenta de relleno: `snapshot()` es una vista, no pide
+        // `auth`, asi que la identidad de la fuente es irrelevante.
+        let filler = xdr::MuxedAccount::Ed25519([7u8; 32].into());
+        let op = xdr::Operation {
+            body: xdr::OperationBody::InvokeHostFunction(xdr::InvokeHostFunctionOp {
+                host_function: xdr::HostFunction::InvokeContract(xdr::InvokeContractArgs {
+                    contract_address: contract,
+                    function_name: SNAPSHOT_FN
+                        .try_into()
+                        .map_err(|_| AgentError::Xdr("snapshot no es un simbolo valido".into()))?,
+                    args: xdr::VecM::default(),
+                }),
+                auth: xdr::VecM::default(),
+            }),
+            source_account: None,
+        };
+        let tx = xdr::Transaction {
+            source_account: filler,
+            fee: crate::attest::BASE_FEE_STROOPS,
+            seq_num: xdr::SequenceNumber(0),
+            cond: xdr::Preconditions::default(),
+            memo: xdr::Memo::None,
+            operations: xdr::VecM::try_from(vec![op])
+                .map_err(|e| AgentError::Xdr(format!("operaciones: {e}")))?,
+            ext: xdr::TransactionExt::V0,
+        };
+
+        let simulation = client
+            .simulate_transaction_envelope(&crate::attest::unsigned_envelope(&tx), None)
+            .await
+            .map_err(|e| AgentError::Network(format!("simulateTransaction({SNAPSHOT_FN}): {e}")))?;
+        let result = simulation
+            .results()
+            .map_err(|e| AgentError::Network(format!("resultado de {SNAPSHOT_FN}: {e}")))?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                AgentError::Network(format!("{SNAPSHOT_FN} no devolvio ningun resultado"))
+            })?;
+        decode_snapshot_scval(&result.xdr)
     }
 
     /// Timestamp de cierre del ledger mas reciente.
@@ -438,28 +605,29 @@ pub(crate) fn rpc_error(op: &str, e: &stellar_rpc_client::Error) -> AgentError {
     AgentError::Network(format!("{op}: {e}"))
 }
 
-/// Llave de la instancia completa del contrato, que es donde viven los `DataKey`.
+/// Lee el estado que devuelve una funcion del contrato, tal y como lo reporta la
+/// simulacion.
 ///
-/// Los `DataKey` no son entradas propias del ledger: son claves del `ScMap` de
-/// almacenamiento de instancia, asi que se lee la instancia entera y se busca dentro.
-pub(crate) fn contract_instance_key(contract: &[u8; 32]) -> xdr::LedgerKey {
-    xdr::LedgerKey::ContractData(xdr::LedgerKeyContractData {
-        contract: xdr::ScAddress::Contract(xdr::ContractId(xdr::Hash(*contract))),
-        key: ScVal::LedgerKeyContractInstance,
-        durability: xdr::ContractDataDurability::Persistent,
-    })
+/// Se usa como primera referencia y luego se contrasta con una relectura: la
+/// simulacion corre en el estado de la red en ese instante, que ya pudo quedar viejo
+/// para cuando la transaccion se incluya.
+pub(crate) fn state_from_simulation(
+    simulation: &stellar_rpc_client::SimulateTransactionResponse,
+) -> Result<EscrowState> {
+    let result = simulation
+        .results()
+        .map_err(|e| AgentError::Network(format!("resultado de la simulacion: {e}")))?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AgentError::Network("la simulacion no devolvio resultados".into()))?;
+    match &result.xdr {
+        ScVal::U32(v) => Ok(EscrowState::from_u32(*v)),
+        ScVal::Void => Err(AgentError::Network("la funcion no devolvio estado".into())),
+        other => Err(AgentError::Xdr(format!("estado inesperado: {other:?}"))),
+    }
 }
 
-/// `ScVal::Vec([ScVal::Symbol(name)])`, la forma que usa `#[contracttype] enum` de Soroban.
-pub(crate) fn sc_key(name: &str) -> Result<ScVal> {
-    let symbol: xdr::StringM<32> = name
-        .try_into()
-        .map_err(|_| AgentError::Config(format!("clave de almacenamiento invalida: {name}")))?;
-    let vec = xdr::ScVec(vec_one(ScVal::Symbol(xdr::ScSymbol(symbol)))?);
-    Ok(ScVal::Vec(Some(vec)))
-}
-
-/// `VecM` de un solo elemento, que es la forma de un `DataKey` de Soroban.
+/// `VecM` de un solo elemento, que es la forma de una lista de argumentos de Soroban.
 pub(crate) fn vec_one(val: ScVal) -> Result<xdr::VecM<ScVal>> {
     xdr::VecM::try_from(vec![val])
         .map_err(|e| AgentError::Xdr(format!("no se pudo construir el VecM: {e}")))
@@ -471,42 +639,200 @@ pub(crate) fn vec_of(vals: Vec<ScVal>) -> Result<xdr::VecM<ScVal>> {
         .map_err(|e| AgentError::Xdr(format!("no se pudo construir el VecM: {e}")))
 }
 
-/// Lee el mapa de almacenamiento de instancia del contrato.
-fn read_instance_storage(val: &ScVal) -> Result<xdr::ScMap> {
-    match val {
-        ScVal::ContractInstance(instance) => instance.storage.clone().ok_or_else(|| {
-            AgentError::Network("el contrato no tiene almacenamiento de instancia".into())
-        }),
-        other => Err(AgentError::Network(format!(
-            "valor inesperado en la instancia: {other:?}"
-        ))),
-    }
+/// Nombre del getter de lectura que consume el agente.
+pub const SNAPSHOT_FN: &str = "snapshot";
+
+/// Instantanea tal y como la devuelve el getter `snapshot()` del contrato.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContractSnapshot {
+    pub state: EscrowState,
+    pub config: EscrowConfigView,
+    pub evidence_bundle_hash: Option<[u8; 32]>,
+    pub report_hash: Option<[u8; 32]>,
+    pub funded_at: Option<u64>,
+    pub submission_deadline: Option<u64>,
+    pub attestation_deadline: Option<u64>,
+    pub attested_at: Option<u64>,
+    pub objection_deadline: Option<u64>,
+    pub correction_deadline: Option<u64>,
+    pub disputed_at: Option<u64>,
+    pub resolution_deadline: Option<u64>,
+    pub correction_attempts: u32,
+    pub dispute_reason_hash: Option<[u8; 32]>,
+    pub dispute_evidence_hash: Option<[u8; 32]>,
+    pub ledger_timestamp: u64,
 }
 
-/// Busca una clave en el mapa de instancia.
-fn lookup<'a>(storage: &'a xdr::ScMap, name: &str) -> Option<&'a ScVal> {
-    let key = sc_key(name).ok()?;
-    storage.0.iter().find(|e| e.key == key).map(|e| &e.val)
-}
+/// Indices de los campos de `EscrowSnapshot` en el `types.rs` del contrato.
+///
+/// Un `#[contracttype] struct` se serializa como `ScVal::Vec` con los campos en el orden
+/// de declaracion. Aqui si hay posiciones, pero **del tipo que el contrato declara y
+/// publica**: si el contrato reordena sus campos, el propio contrato y este agente
+/// compilan juntos, y el test `wrong_field_count_is_an_explicit_error` mas la validacion
+/// de longitud hacen que el desajuste sea un error explicito. Lo que ya no se depende es
+/// del almacenamiento privado ni de las `DataKey`.
+const F_STATE: usize = 0;
+const F_CONFIG: usize = 1;
+const F_EVIDENCE_HASH: usize = 2;
+const F_REPORT_HASH: usize = 3;
+const F_FUNDED_AT: usize = 4;
+const F_SUBMISSION_DEADLINE: usize = 5;
+const F_ATTESTATION_DEADLINE: usize = 6;
+const F_ATTESTED_AT: usize = 7;
+const F_OBJECTION_DEADLINE: usize = 8;
+const F_CORRECTION_DEADLINE: usize = 9;
+const F_DISPUTED_AT: usize = 10;
+const F_RESOLUTION_DEADLINE: usize = 11;
+const F_CORRECTION_ATTEMPTS: usize = 12;
+const F_DISPUTE_REASON_HASH: usize = 13;
+const F_DISPUTE_EVIDENCE_HASH: usize = 14;
+const F_LEDGER_TIMESTAMP: usize = 15;
+/// Cantidad de campos de `EscrowSnapshot`; si cambia, la decodificacion debe cambiar.
+const SNAPSHOT_FIELDS: usize = 16;
 
-/// Estado actual, como `ScVal::U32` con el indice del enum.
-fn read_state(storage: &xdr::ScMap) -> Result<EscrowState> {
-    let val = lookup(storage, "State")
-        .ok_or_else(|| AgentError::Network("el contrato no tiene clave State".into()))?;
-    let ScVal::U32(v) = val else {
-        return Err(AgentError::Network(format!("State no es U32: {val:?}")));
+/// Decodifica el `ScVal` que devuelve `snapshot()`.
+///
+/// Cada campo se valida: un tipo inesperado es un error explicito, nunca un valor por
+/// defecto silencioso. `EscrowState::Unknown` si se conserva porque un enum nuevo en el
+/// contrato debe verse como desconocido y no confundirse con `Created`.
+pub fn decode_snapshot_scval(val: &ScVal) -> Result<ContractSnapshot> {
+    let ScVal::Vec(Some(items)) = val else {
+        return Err(AgentError::Xdr(format!(
+            "snapshot() deberia devolver un Vec, recibio {val:?}"
+        )));
     };
-    Ok(EscrowState::from_u32(*v))
+    if items.len() != SNAPSHOT_FIELDS {
+        return Err(AgentError::Xdr(format!(
+            "snapshot() devolvio {} campos y el agente espera {SNAPSHOT_FIELDS}; \
+             el contrato cambio y el agente debe actualizarse",
+            items.len()
+        )));
+    }
+    let get = |i: usize| -> &ScVal { &items[i] };
+
+    let out = ContractSnapshot {
+        state: match get(F_STATE) {
+            ScVal::U32(v) => EscrowState::from_u32(*v),
+            other => return Err(AgentError::Xdr(format!("state no es U32: {other:?}"))),
+        },
+        config: decode_config(get(F_CONFIG))?,
+        evidence_bundle_hash: decode_bytes32_opt(get(F_EVIDENCE_HASH), "evidence_bundle_hash")?,
+        report_hash: decode_bytes32_opt(get(F_REPORT_HASH), "report_hash")?,
+        funded_at: decode_u64_opt(get(F_FUNDED_AT), "funded_at")?,
+        submission_deadline: decode_u64_opt(get(F_SUBMISSION_DEADLINE), "submission_deadline")?,
+        attestation_deadline: decode_u64_opt(get(F_ATTESTATION_DEADLINE), "attestation_deadline")?,
+        attested_at: decode_u64_opt(get(F_ATTESTED_AT), "attested_at")?,
+        objection_deadline: decode_u64_opt(get(F_OBJECTION_DEADLINE), "objection_deadline")?,
+        correction_deadline: decode_u64_opt(get(F_CORRECTION_DEADLINE), "correction_deadline")?,
+        disputed_at: decode_u64_opt(get(F_DISPUTED_AT), "disputed_at")?,
+        resolution_deadline: decode_u64_opt(get(F_RESOLUTION_DEADLINE), "resolution_deadline")?,
+        correction_attempts: match get(F_CORRECTION_ATTEMPTS) {
+            ScVal::U32(v) => *v,
+            other => {
+                return Err(AgentError::Xdr(format!(
+                    "correction_attempts no es U32: {other:?}"
+                )))
+            }
+        },
+        dispute_reason_hash: decode_bytes32_opt(get(F_DISPUTE_REASON_HASH), "dispute_reason_hash")?,
+        dispute_evidence_hash: decode_bytes32_opt(
+            get(F_DISPUTE_EVIDENCE_HASH),
+            "dispute_evidence_hash",
+        )?,
+        ledger_timestamp: match get(F_LEDGER_TIMESTAMP) {
+            ScVal::U64(v) => *v,
+            other => {
+                return Err(AgentError::Xdr(format!(
+                    "ledger_timestamp no es U64: {other:?}"
+                )))
+            }
+        },
+    };
+
+    // Invariante del contrato: `attest()` solo avanza a `Attested*` y un escrow aun
+    // atestetable no puede tener `report_hash`. Si se cumple al reves, la lectura no
+    // viene de un contrato P0-07 y el motor no debe decidir sobre ella.
+    if out.state == EscrowState::EvidenceSubmitted && out.report_hash.is_some() {
+        return Err(AgentError::Network(format!(
+            "lectura inconsistente: EvidenceSubmitted con report_hash {:?}",
+            out.report_hash.map(hex::encode)
+        )));
+    }
+    Ok(out)
 }
 
-/// Lee un `BytesN<32>` del almacenamiento.
-fn read_bytes_n(storage: &xdr::ScMap, name: &str) -> Result<Option<[u8; 32]>> {
-    match lookup(storage, name) {
-        None => Ok(None),
-        Some(ScVal::Bytes(b)) => {
+/// Cantidad de campos de `EscrowConfig`; si cambia, hay que revisar los indices de abajo.
+const CONFIG_FIELDS: usize = 14;
+
+/// Decodifica el `EscrowConfig` embebido.
+///
+/// Indices segun `EscrowConfig` en el `types.rs` del contrato.
+fn decode_config(val: &ScVal) -> Result<EscrowConfigView> {
+    let ScVal::Vec(Some(items)) = val else {
+        return Err(AgentError::Xdr(format!("config no es Vec: {val:?}")));
+    };
+    // Se exige la longitud completa aunque solo se lean seis campos: un Config
+    // truncado significa que el contrato cambio, y aceptarlo seria decidir sobre
+    // una lectura que no se sabe que es.
+    if items.len() != CONFIG_FIELDS {
+        return Err(AgentError::Xdr(format!(
+            "config devolvio {} campos y el agente espera {CONFIG_FIELDS}",
+            items.len()
+        )));
+    }
+    let get = |i: usize| -> Result<&ScVal> {
+        items
+            .get(i)
+            .ok_or_else(|| AgentError::Xdr(format!("config incompleto: falta el campo {i}")))
+    };
+    let as_address = |i: usize| -> Result<String> {
+        match get(i)? {
+            ScVal::Address(a) => Ok(sc_address_to_str(a)),
+            other => Err(AgentError::Xdr(format!(
+                "config.{i} no es Address: {other:?}"
+            ))),
+        }
+    };
+    let as_i128 = |i: usize| -> Result<i128> {
+        match get(i)? {
+            ScVal::I128(v) => Ok(((v.hi as i128) << 64) | (v.lo as i128)),
+            other => Err(AgentError::Xdr(format!("config.{i} no es I128: {other:?}"))),
+        }
+    };
+    let as_u64 = |i: usize| -> Result<u64> {
+        match get(i)? {
+            ScVal::U64(v) => Ok(*v),
+            other => Err(AgentError::Xdr(format!("config.{i} no es U64: {other:?}"))),
+        }
+    };
+    let as_u32 = |i: usize| -> Result<u32> {
+        match get(i)? {
+            ScVal::U32(v) => Ok(*v),
+            other => Err(AgentError::Xdr(format!("config.{i} no es U32: {other:?}"))),
+        }
+    };
+
+    // buyer, supplier, engine, resolver, token, amount, submission_period,
+    // attestation_period, objection_period, correction_period, resolution_period,
+    // fallback_outcome, fallback_split_bps, max_correction_attempts.
+    Ok(EscrowConfigView {
+        engine: as_address(2)?,
+        token: as_address(4)?,
+        amount: as_i128(5)?,
+        attestation_period: as_u64(7)?,
+        fallback_outcome: as_u32(11)?,
+        fallback_split_bps: as_u32(12)?,
+    })
+}
+
+/// Lee un `Option<BytesN<32>>`, que Soroban codifica como `Void` o `Bytes`.
+fn decode_bytes32_opt(val: &ScVal, name: &str) -> Result<Option<[u8; 32]>> {
+    match val {
+        ScVal::Void => Ok(None),
+        ScVal::Bytes(b) => {
             let slice: &[u8] = b.0.as_ref();
             if slice.len() != 32 {
-                return Err(AgentError::Network(format!(
+                return Err(AgentError::Xdr(format!(
                     "{name} deberia tener 32 bytes y tiene {}",
                     slice.len()
                 )));
@@ -515,92 +841,21 @@ fn read_bytes_n(storage: &xdr::ScMap, name: &str) -> Result<Option<[u8; 32]>> {
             out.copy_from_slice(slice);
             Ok(Some(out))
         }
-        Some(other) => Err(AgentError::Network(format!(
-            "{name} no es Bytes: {other:?}"
+        other => Err(AgentError::Xdr(format!(
+            "{name} no es Bytes ni Void: {other:?}"
         ))),
     }
 }
 
-/// Lee un `u64` del almacenamiento.
-fn read_u64(storage: &xdr::ScMap, name: &str) -> Result<Option<u64>> {
-    match lookup(storage, name) {
-        None => Ok(None),
-        Some(ScVal::U64(v)) => Ok(Some(*v)),
-        Some(ScVal::U32(v)) => Ok(Some(*v as u64)),
-        Some(other) => Err(AgentError::Network(format!("{name} no es U64: {other:?}"))),
+/// Lee un `Option<u64>`, que Soroban codifica como `Void` o `U64`.
+fn decode_u64_opt(val: &ScVal, name: &str) -> Result<Option<u64>> {
+    match val {
+        ScVal::Void => Ok(None),
+        ScVal::U64(v) => Ok(Some(*v)),
+        other => Err(AgentError::Xdr(format!(
+            "{name} no es U64 ni Void: {other:?}"
+        ))),
     }
-}
-
-/// Lee el `EscrowConfig` de la cadena.
-///
-/// El contrato lo guarda como un `ScVal::Vec` (struct de `contracttype`) con las claves
-/// publicas en orden de declaracion en `types.rs`; aqui se toman solo los campos que el
-/// agente necesita, por indice y con validacion de longitud.
-fn read_config(storage: &xdr::ScMap) -> Result<EscrowConfigView> {
-    let val = lookup(storage, "Config").ok_or_else(|| {
-        AgentError::Network("el contrato no esta inicializado (sin Config)".into())
-    })?;
-    let ScVal::Vec(Some(items)) = val else {
-        return Err(AgentError::Network(format!("Config no es Vec: {val:?}")));
-    };
-    let get = |i: usize| -> Result<&ScVal> {
-        items
-            .get(i)
-            .ok_or_else(|| AgentError::Network(format!("Config incompleto: falta el campo {i}")))
-    };
-    let as_address = |i: usize| -> Result<String> {
-        match get(i)? {
-            ScVal::Address(a) => Ok(sc_address_to_str(a)),
-            other => Err(AgentError::Network(format!(
-                "campo {i} no es Address: {other:?}"
-            ))),
-        }
-    };
-    let as_i128 = |i: usize| -> Result<i128> {
-        match get(i)? {
-            ScVal::I128(v) => Ok(((v.hi as i128) << 64) | (v.lo as i128)),
-            other => Err(AgentError::Network(format!(
-                "campo {i} no es I128: {other:?}"
-            ))),
-        }
-    };
-    let as_u64 = |i: usize| -> Result<u64> {
-        match get(i)? {
-            ScVal::U64(v) => Ok(*v),
-            ScVal::U32(v) => Ok(*v as u64),
-            other => Err(AgentError::Network(format!(
-                "campo {i} no es U64: {other:?}"
-            ))),
-        }
-    };
-    let as_u32 = |i: usize| -> Result<u32> {
-        match get(i)? {
-            ScVal::U32(v) => Ok(*v),
-            other => Err(AgentError::Network(format!(
-                "campo {i} no es U32: {other:?}"
-            ))),
-        }
-    };
-
-    // Orden de `EscrowConfig` en contracts/conditional-payment/src/types.rs:
-    // buyer, supplier, engine, resolver, token, amount, submission_period,
-    // attestation_period, objection_period, correction_period, resolution_period,
-    // fallback_outcome, fallback_split_bps, max_correction_attempts.
-    let engine = as_address(2)?;
-    let token = as_address(4)?;
-    let amount = as_i128(5)?;
-    let attestation_period = as_u64(7)?;
-    let fallback_outcome = as_u32(11)?;
-    let fallback_split_bps = as_u32(12)?;
-
-    Ok(EscrowConfigView {
-        engine,
-        token,
-        amount,
-        attestation_period,
-        fallback_outcome,
-        fallback_split_bps,
-    })
 }
 
 /// Codifica un `ScAddress` a strkey `G...` o `C...`.
@@ -641,63 +896,189 @@ pub type SharedChain = Arc<dyn ChainClient>;
 mod tests {
     use super::*;
 
-    fn storage_with(entries: &[(&str, ScVal)]) -> xdr::ScMap {
-        xdr::ScMap::sorted_from_pairs(entries.iter().map(|(k, v)| (sc_key(k).unwrap(), v.clone())))
-            .unwrap()
+    /// Direccion de cuenta valida en XDR, para construir el `EscrowConfig` de prueba.
+    fn account(seed: u8) -> ScVal {
+        ScVal::Address(xdr::ScAddress::Account(xdr::AccountId(
+            xdr::PublicKey::PublicKeyTypeEd25519(xdr::Uint256([seed; 32])),
+        )))
+    }
+
+    fn contract(seed: u8) -> ScVal {
+        ScVal::Address(xdr::ScAddress::Contract(xdr::ContractId(xdr::Hash(
+            [seed; 32],
+        ))))
     }
 
     fn bytes32(raw: [u8; 32]) -> ScVal {
         ScVal::Bytes(xdr::ScBytes(xdr::BytesM::try_from(raw.to_vec()).unwrap()))
     }
 
-    #[test]
-    fn key_is_vec_of_symbol() {
-        let expected = ScVal::Vec(Some(xdr::ScVec(
-            vec_one(ScVal::Symbol("State".try_into().unwrap())).unwrap(),
-        )));
-        assert_eq!(sc_key("State").unwrap(), expected);
+    fn u64v(v: u64) -> ScVal {
+        ScVal::U64(v)
+    }
+
+    /// `VecM` de test: no es mutable, asi que se reconstruye desde un `Vec`.
+    fn vec_of(vals: Vec<ScVal>) -> ScVal {
+        ScVal::Vec(Some(xdr::ScVec(xdr::VecM::try_from(vals).unwrap())))
+    }
+
+    /// Desarma un `ScVal::Vec` a `Vec<ScVal>` para poder alterarlo en un test.
+    fn as_vec(val: &ScVal) -> Vec<ScVal> {
+        let ScVal::Vec(Some(items)) = val else {
+            panic!("se esperaba ScVal::Vec")
+        };
+        items.0.to_vec()
+    }
+
+    /// `EscrowConfig` completo, con los 14 campos en el orden de `types.rs`.
+    fn config_vec() -> ScVal {
+        vec_of(vec![
+            account(1),  // 0 buyer
+            account(2),  // 1 supplier
+            account(3),  // 2 engine
+            account(4),  // 3 resolver
+            contract(5), // 4 token
+            ScVal::I128(xdr::Int128Parts {
+                hi: 0,
+                lo: 1_000_000,
+            }), // 5 amount
+            u64v(1_000), // 6 submission_period
+            u64v(600),   // 7 attestation_period
+            u64v(1_200), // 8 objection_period
+            u64v(1_800), // 9 correction_period
+            u64v(2_400), // 10 resolution_period
+            ScVal::U32(2), // 11 fallback_outcome = Refund
+            ScVal::U32(0), // 12 fallback_split_bps
+            ScVal::U32(1), // 13 max_correction_attempts
+        ])
+    }
+
+    /// `EscrowSnapshot` completo, con los 16 campos en el orden de `types.rs`.
+    fn snapshot_val(
+        state: u32,
+        evidence: Option<[u8; 32]>,
+        report: Option<[u8; 32]>,
+        correction_attempts: u32,
+    ) -> ScVal {
+        let opt_hash = |h: Option<[u8; 32]>| match h {
+            Some(raw) => bytes32(raw),
+            None => ScVal::Void,
+        };
+        let opt_u64 = |v: Option<u64>| match v {
+            Some(n) => u64v(n),
+            None => ScVal::Void,
+        };
+        vec_of(vec![
+            ScVal::U32(state),               // 0 state
+            config_vec(),                    // 1 config
+            opt_hash(evidence),              // 2 evidence_bundle_hash
+            opt_hash(report),                // 3 report_hash
+            opt_u64(Some(1_000)),            // 4 funded_at
+            opt_u64(Some(2_000)),            // 5 submission_deadline
+            opt_u64(Some(3_000)),            // 6 attestation_deadline
+            opt_u64(None),                   // 7 attested_at
+            opt_u64(None),                   // 8 objection_deadline
+            opt_u64(None),                   // 9 correction_deadline
+            opt_u64(None),                   // 10 disputed_at
+            opt_u64(None),                   // 11 resolution_deadline
+            ScVal::U32(correction_attempts), // 12 correction_attempts
+            opt_hash(None),                  // 13 dispute_reason_hash
+            opt_hash(None),                  // 14 dispute_evidence_hash
+            u64v(2_500),                     // 15 ledger_timestamp
+        ])
     }
 
     #[test]
-    fn state_decodes_by_discriminant() {
-        let s = storage_with(&[("State", ScVal::U32(2))]);
-        assert_eq!(read_state(&s).unwrap(), EscrowState::EvidenceSubmitted);
+    fn decodes_state_and_config_by_name_position() {
+        let sc = decode_snapshot_scval(&snapshot_val(2, Some([1u8; 32]), None, 0)).unwrap();
+        assert_eq!(sc.state, EscrowState::EvidenceSubmitted);
+        assert_eq!(sc.config.amount, 1_000_000);
+        assert_eq!(sc.config.attestation_period, 600);
+        assert_eq!(sc.config.fallback_outcome, 2);
+        assert_eq!(sc.evidence_bundle_hash, Some([1u8; 32]));
+        assert_eq!(sc.ledger_timestamp, 2_500);
     }
 
     #[test]
-    fn unknown_state_is_not_silently_mapped() {
-        let s = storage_with(&[("State", ScVal::U32(42))]);
-        assert_eq!(read_state(&s).unwrap(), EscrowState::Unknown(42));
+    fn decodes_optionals_as_void() {
+        let sc = decode_snapshot_scval(&snapshot_val(2, Some([1u8; 32]), None, 0)).unwrap();
+        // Un escrow atestectable todavia no tiene report_hash ni plazos derivados.
+        assert_eq!(sc.report_hash, None);
+        assert_eq!(sc.attested_at, None);
+        assert_eq!(sc.objection_deadline, None);
     }
 
     #[test]
-    fn wrong_length_hash_is_rejected() {
-        let s = storage_with(&[(
-            "EvidenceBundleHash",
-            ScVal::Bytes(xdr::ScBytes(xdr::BytesM::try_from(vec![1u8; 31]).unwrap())),
-        )]);
-        assert!(read_bytes_n(&s, "EvidenceBundleHash").is_err());
+    fn wrong_field_count_is_an_explicit_error() {
+        // Un contrato con un campo mas debe fallar con un mensaje que diga que
+        // hay que actualizar el agente, no leerse como si nada.
+        let mut items = as_vec(&snapshot_val(2, Some([1u8; 32]), None, 0));
+        items.push(ScVal::U32(0));
+        let err = decode_snapshot_scval(&vec_of(items)).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("17"), "esperaba contar los campos, dio: {msg}");
+        assert!(
+            msg.contains("actualizarse"),
+            "esperaba pedir actualizacion: {msg}"
+        );
     }
 
     #[test]
-    fn missing_state_is_an_error_not_a_panic() {
-        let s = storage_with(&[("Other", ScVal::U32(1))]);
-        assert!(read_state(&s).is_err());
+    fn wrong_type_is_not_silently_zero() {
+        let mut items = as_vec(&snapshot_val(2, Some([1u8; 32]), None, 0));
+        items[F_CORRECTION_ATTEMPTS] = ScVal::U64(1);
+        let err = decode_snapshot_scval(&vec_of(items)).unwrap_err();
+        assert!(format!("{err}").contains("correction_attempts"));
     }
 
     #[test]
-    fn bytes_n_is_read() {
-        let mut raw = [0u8; 32];
-        raw[0] = 0xab;
-        let s = storage_with(&[("EvidenceBundleHash", bytes32(raw))]);
-        assert_eq!(read_bytes_n(&s, "EvidenceBundleHash").unwrap(), Some(raw));
-        assert_eq!(read_bytes_n(&s, "ReportHash").unwrap(), None);
+    fn attestable_with_report_hash_is_rejected_as_inconsistent() {
+        // EvidenceSubmitted + report_hash no lo puede producir el contrato P0-07:
+        // es una lectura de una version distinta, y el motor no debe decidir sobre ella.
+        let err = decode_snapshot_scval(&snapshot_val(2, Some([1u8; 32]), Some([9u8; 32]), 0))
+            .unwrap_err();
+        assert!(format!("{err}").contains("inconsistente"));
     }
 
     #[test]
-    fn snapshot_reports_attestability() {
-        let snap = EscrowSnapshot {
-            state: EscrowState::EvidenceSubmitted,
+    fn attested_pass_decodes_with_report_hash() {
+        let sc =
+            decode_snapshot_scval(&snapshot_val(3, Some([1u8; 32]), Some([9u8; 32]), 0)).unwrap();
+        assert_eq!(sc.state, EscrowState::AttestedPass);
+        assert_eq!(sc.report_hash, Some([9u8; 32]));
+    }
+
+    #[test]
+    fn correction_attempt_is_visible_to_the_engine() {
+        let sc = decode_snapshot_scval(&snapshot_val(2, Some([2u8; 32]), None, 1)).unwrap();
+        assert_eq!(sc.correction_attempts, 1);
+    }
+
+    #[test]
+    fn unknown_state_survives_decoding() {
+        let sc = decode_snapshot_scval(&snapshot_val(42, None, None, 0)).unwrap();
+        assert_eq!(sc.state, EscrowState::Unknown(42));
+        assert_eq!(sc.state.to_string(), "Unknown(42)");
+    }
+
+    #[test]
+    fn non_vec_is_rejected() {
+        assert!(decode_snapshot_scval(&ScVal::U32(2)).is_err());
+    }
+
+    #[test]
+    fn config_with_missing_field_is_rejected() {
+        let mut items = as_vec(&snapshot_val(2, Some([1u8; 32]), None, 0));
+        let mut cfg = as_vec(&items[F_CONFIG]);
+        cfg.pop();
+        items[F_CONFIG] = vec_of(cfg);
+        let err = decode_snapshot_scval(&vec_of(items)).unwrap_err();
+        assert!(format!("{err}").contains("config"));
+    }
+
+    fn snap(state: EscrowState) -> EscrowSnapshot {
+        EscrowSnapshot {
+            state,
             config: EscrowConfigView {
                 engine: "G".into(),
                 token: "C".into(),
@@ -707,11 +1088,64 @@ mod tests {
                 fallback_split_bps: 0,
             },
             evidence_bundle_hash: Some([1u8; 32]),
+            report_hash: None,
             attestation_deadline: Some(1_000),
+            funded_at: Some(100),
+            submission_deadline: Some(200),
+            objection_deadline: None,
+            correction_deadline: None,
+            resolution_deadline: None,
+            disputed_at: None,
+            correction_attempts: 0,
             ledger: 5,
             ledger_timestamp: 900,
-        };
-        assert!(snap.is_attestable());
-        assert_eq!(snap.attestation_remaining(), Some(100));
+        }
+    }
+
+    #[test]
+    fn snapshot_reports_attestability() {
+        let s = snap(EscrowState::EvidenceSubmitted);
+        assert!(s.is_attestable());
+        assert_eq!(s.attestation_remaining(), Some(100));
+        assert!(!s.is_correction());
+    }
+
+    #[test]
+    fn expired_deadline_is_reported_as_remaining_zero_or_less() {
+        let mut s = snap(EscrowState::EvidenceSubmitted);
+        s.ledger_timestamp = 1_000;
+        assert_eq!(s.attestation_remaining(), Some(0));
+        s.ledger_timestamp = 1_001;
+        assert_eq!(s.attestation_remaining(), Some(-1));
+    }
+
+    #[test]
+    fn correction_is_detected_from_attempts() {
+        let mut s = snap(EscrowState::EvidenceSubmitted);
+        s.correction_attempts = 1;
+        assert!(s.is_correction());
+    }
+
+    #[test]
+    fn contract_id_must_be_valid_strkey() {
+        // CRC y version verificados a mano; un id mal escrito debe fallar al
+        // construir, no a mitad de una atestacion.
+        assert!(
+            parse_contract_id("CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE").is_ok()
+        );
+        assert!(parse_contract_id("no-es-un-contract-id").is_err());
+        // Version 6 (ed25519) no es un id de contrato, aunque tenga longuitud correcta.
+        assert!(
+            parse_contract_id("GDLVVGAB5ZWOW6NOZUHRBCEQI54OAJ5GJLDIKDDUAP6B5HDGXIEFDOAM").is_err()
+        );
+    }
+
+    #[test]
+    fn to_json_exposes_the_reading_contract() {
+        let json = snap(EscrowState::EvidenceSubmitted).to_json();
+        assert_eq!(json["state"], "EvidenceSubmitted");
+        assert_eq!(json["amount"], 1);
+        assert_eq!(json["attestation_remaining"], 100);
+        assert!(json["report_hash"].is_null());
     }
 }

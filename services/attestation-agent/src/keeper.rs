@@ -33,6 +33,14 @@ pub struct KeeperConfig {
     pub poll_interval: Duration,
     /// Tope de iteraciones; `None` significa bucle infinito.
     pub max_iterations: Option<u64>,
+    /// Si el keeper tambien llama a `finalize()` cuando un plazo parece vencido.
+    ///
+    /// El calculo de si un plazo vencio es **una estimacion del cliente**, no la
+    /// verdad: un ledger puede moverse entre la lectura y el envio. Por eso la
+    /// estimacion solo decide si se intenta, y es `finalize()` del contrato el que
+    /// aplica el vencimiento. Si el contrato dice que todavia no, el keeper se aquieta
+    /// y vuelve a mirar; no insiste ni lleva su propia cuenta como si fuera cierta.
+    pub finalize_on_expiry: bool,
 }
 
 /// Que hizo el keeper en una iteracion.
@@ -50,6 +58,36 @@ pub enum KeeperStep {
         tx: String,
         state_after: EscrowState,
     },
+    /// El estado ya no admite atestacion y no queda nada que esperar.
+    Closed { state: EscrowState },
+    /// La lectura de cadena fallo; se reintentara en la siguiente iteracion.
+    Transient { error: String },
+    /// Se intento `finalize()` y el escrow quedo liquidado.
+    Finalized { state: EscrowState },
+}
+
+/// Motivo por el que un `Observation` **no** lleva a firmar.
+///
+/// La distincion importa para los reintentos: `HashMismatch` y `BundleUnavailable` se
+/// resuelven solos cuando el proveedor sube la evidencia correcta, asi que el keeper
+/// debe seguir vigilando. Un estado terminal, en cambio, no mejore por esperar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkipReason {
+    /// El estado aun permite atestar, pero todavia no.
+    NotYet,
+    /// Falta el bundle en disco: reintentable.
+    BundleMissing,
+    /// El hash no coincide: reintentable cuando el proveedor corrija.
+    HashMismatch,
+    /// El escrow llego a un estado final: no hay nada mas que hacer.
+    Terminal,
+}
+
+impl SkipReason {
+    /// `true` si vale la pena volver a mirar mas adelante.
+    pub fn is_retryable(self) -> bool {
+        !matches!(self, Self::Terminal)
+    }
 }
 
 /// Resumen de una ejecucion completa.
@@ -59,6 +97,12 @@ pub struct KeeperReport {
     pub steps: Vec<KeeperStep>,
     /// Cuantas atestaciones se enviaron.
     pub attested: u32,
+    /// Cuantas lecturas de cadena fallaron por infraestructura.
+    pub transient: u32,
+    /// Cuantas veces el contrato confirmo un vencimiento liquidado.
+    pub finalized: u32,
+    /// Por que dejo de vigilar, si dejo de vigilar.
+    pub stopped_because: Option<String>,
 }
 
 impl KeeperReport {
@@ -66,6 +110,7 @@ impl KeeperReport {
     pub fn last_state(&self) -> Option<EscrowState> {
         self.steps.iter().rev().find_map(|s| match s {
             KeeperStep::Waiting { state } => Some(*state),
+            KeeperStep::Closed { state } | KeeperStep::Finalized { state } => Some(*state),
             KeeperStep::Attested { state_after, .. } => Some(*state_after),
             _ => None,
         })
@@ -132,6 +177,81 @@ impl Observation {
             }
         }
     }
+
+    /// Por que esta observacion no lleva a firmar, o `None` si si lleva.
+    pub fn skip_reason(&self) -> Option<SkipReason> {
+        match self {
+            Observation::Ready(_) => None,
+            Observation::BundleUnavailable { .. } => Some(SkipReason::BundleMissing),
+            Observation::HashMismatch { .. } => Some(SkipReason::HashMismatch),
+            Observation::Waiting { state } => {
+                if is_terminal(*state) {
+                    Some(SkipReason::Terminal)
+                } else {
+                    Some(SkipReason::NotYet)
+                }
+            }
+        }
+    }
+}
+
+/// `true` si el escrow llego a un estado del que no se sale.
+///
+/// `AttestedPass` y `AttestedFail` **no** son terminales: tras un FAIL el proveedor
+/// todavia puede corregir la evidencia una vez, y el engine debe volver a evaluarla.
+pub fn is_terminal(state: EscrowState) -> bool {
+    matches!(
+        state,
+        EscrowState::Released | EscrowState::Refunded | EscrowState::Cancelled | EscrowState::Split
+    )
+}
+
+/// `true` si el estado sigue vivo y puede cambiar sin intervencion del engine.
+pub fn is_live(state: EscrowState) -> bool {
+    !is_terminal(state) && !matches!(state, EscrowState::Disputed)
+}
+
+/// Plazo que, segun la lectura actual, podria estar vencido.
+///
+/// Es una **estimacion** para decidir si vale la pena llamar a `finalize()`. El reloj
+/// real es el del ledger que vea el contrato al ejecutar, asi que esta funcion nunca
+/// afirma que un escrow esta vencido: solo sugiere probarlo.
+///
+/// Se listan los plazos con sus precondiciones, replicando la logica de `finalize()`:
+/// - `Funded`: vence `submission_deadline` (reembolsa al buyer).
+/// - `EvidenceSubmitted`: vence `attestation_deadline` (resuelve por fallback).
+/// - `AttestedPass`: vence `objection_deadline` (reembolsa al buyer).
+/// - `AttestedFail`: vence `correction_deadline` (resuelve por fallback).
+/// - `Disputed`: vence `resolution_deadline` (resuelve por fallback).
+pub fn expiry_candidate(snapshot: &EscrowSnapshot) -> Option<&'static str> {
+    let now = snapshot.ledger_timestamp;
+    let past = |d: Option<u64>| d.is_some_and(|d| now >= d);
+    match snapshot.state {
+        EscrowState::Funded if past(snapshot.submission_deadline) => Some("submission_deadline"),
+        EscrowState::EvidenceSubmitted if past(snapshot.attestation_deadline) => {
+            Some("attestation_deadline")
+        }
+        EscrowState::AttestedPass if past(snapshot.objection_deadline) => {
+            Some("objection_deadline")
+        }
+        EscrowState::AttestedFail if past(snapshot.correction_deadline) => {
+            Some("correction_deadline")
+        }
+        EscrowState::Disputed if past(snapshot.resolution_deadline) => Some("resolution_deadline"),
+        _ => None,
+    }
+}
+
+/// Intenta `finalize()` si un plazo parece vencido.
+///
+/// Devuelve `Ok(None)` cuando no hay nada que intentar, y `Ok(Some(estado))` cuando el
+/// contrato liquido el escrow. Si el contrato responde `NotFinalizableYet`, eso sube
+/// como error: el keeper no reintenta a la fuerza ni reinterpreta el rechazo.
+fn try_finalize(chain: &dyn ChainClient, snapshot: &EscrowSnapshot) -> Result<Option<EscrowState>> {
+    let Some(_plazo) = expiry_candidate(snapshot) else {
+        return Ok(None);
+    };
+    Ok(Some(chain.finalize()?))
 }
 
 /// Lee el contrato y el bundle, y decide si tiene sentido atestar.
@@ -213,7 +333,14 @@ fn act(
     signer: Option<&EngineSigner>,
 ) -> Result<(KeeperStep, EscrowState)> {
     match observation {
-        Observation::Waiting { state } => Ok((KeeperStep::Waiting { state: *state }, *state)),
+        Observation::Waiting { state } => {
+            let step = if is_terminal(*state) {
+                KeeperStep::Closed { state: *state }
+            } else {
+                KeeperStep::Waiting { state: *state }
+            };
+            Ok((step, *state))
+        }
         Observation::BundleUnavailable { path } => Ok((
             KeeperStep::BundleUnavailable { path: path.clone() },
             observation.state(),
@@ -230,6 +357,47 @@ fn act(
                 AgentError::Config("falta la clave del engine para atestar".into())
             })?;
             let plan = plan_attestation(snapshot, report, signer)?;
+
+            // Relectura anti-obsolescencia: entre el snapshot con el que se planeo y
+            // el envio hay firmas, esperas y red. Si en ese hueco el proveedor subio
+            // evidencia corregida, se vencio el plazo, o el estado cambio, la
+            // atestacion planeada ya no describe la cadena y no debe firmarse.
+            let fresh = chain.snapshot()?;
+            let revalidated = plan_attestation(&fresh, report, signer);
+            let stale = match revalidated {
+                Ok(replan) => {
+                    if replan.outcome != plan.outcome {
+                        Some(format!(
+                            "el outcome planeado ({:?}) ya no coincide con el estado actual ({:?})",
+                            plan.outcome, replan.outcome
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => Some(format!("la lectura fresca ya no permite atestar: {e}")),
+            };
+            if let Some(reason) = stale {
+                return Ok((
+                    KeeperStep::HashMismatch {
+                        on_chain: format!("obsoleta: {reason}"),
+                    },
+                    fresh.state,
+                ));
+            }
+            if fresh.evidence_bundle_hash != snapshot.evidence_bundle_hash {
+                return Ok((
+                    KeeperStep::HashMismatch {
+                        on_chain: format!(
+                            "obsoleta: la evidencia cambio de {:?} a {:?} mientras se preparaba",
+                            snapshot.evidence_bundle_hash.map(hex::encode),
+                            fresh.evidence_bundle_hash.map(hex::encode)
+                        ),
+                    },
+                    fresh.state,
+                ));
+            }
+
             let submitted = chain.submit_attestation(plan.outcome, &plan.report_hash_bytes)?;
             Ok((
                 KeeperStep::Attested {
@@ -243,11 +411,24 @@ fn act(
     }
 }
 
-/// Ejecuta el bucle hasta `max_iterations` o hasta que el estado ya no sea atestatable.
+/// Ejecuta el bucle hasta que el estado ya no pueda volver a ser atestestable.
+///
+/// Cuando para, dice por que. El bucle **no** se detiene por un rechazo: un hash que
+/// no cuadra o un bundle ausente son situaciones que se resuelven solas cuando el
+/// proveedor entrega la evidencia correcta, asi que el keeper sigue vigilando. Solo
+/// para cuando el escrow llega a un estado del que no se sale, cuando se agota
+/// `max_iterations`, o cuando una lectura falla demasiadas veces seguidas.
 pub fn run(chain: &dyn ChainClient, config: &KeeperConfig) -> Result<KeeperReport> {
     let signer = EngineSigner::from_env()?;
     run_with(chain, config, &signer)
 }
+
+/// Fallos de red seguidos antes de rendirse.
+///
+/// Un RPC que se cae un momento no debe hacer que el keeper abandone un escrow que
+/// aun tiene plazo, asi que se tolera un margen; pero un fallo permanente si debe
+/// terminar el proceso, no repetir para siempre.
+pub const MAX_CONSECUTIVE_TRANSIENT: u32 = 5;
 
 /// Igual que [`run`], con el signer ya resuelto.
 pub fn run_with(
@@ -257,24 +438,64 @@ pub fn run_with(
 ) -> Result<KeeperReport> {
     let mut report = KeeperReport::default();
     let mut iteration = 0u64;
+    let mut consecutive_transient = 0u32;
 
     loop {
-        let (step, state) = run_once_with(chain, config, signer)?;
-        match &step {
-            KeeperStep::Attested { .. } => report.attested += 1,
-            other => report.steps.push(other.clone()),
-        }
-        if matches!(step, KeeperStep::Attested { .. }) {
-            report.steps.push(step);
+        match run_once_with(chain, config, signer) {
+            Ok((step, state)) => {
+                report.steps.push(step.clone());
+                match &step {
+                    KeeperStep::Attested { .. } => report.attested += 1,
+                    KeeperStep::Finalized { .. } => {
+                        report.finalized += 1;
+                        break;
+                    }
+                    KeeperStep::Closed { .. } => break,
+                    _ => {}
+                }
+                consecutive_transient = 0;
+
+                // Tras un FAIL el proveedor puede corregir una vez, asi que se sigue
+                // vigilando; lo que corta el bucle es un estado terminal o un
+                // vencimiento que el contrato confirma.
+                if is_terminal(state) {
+                    break;
+                }
+
+                // Vencimiento: se intenta `finalize()` y **el contrato decide**. Si
+                // dice que todavia no, se propaga el error y el keeper vuelve a mirar.
+                if config.finalize_on_expiry {
+                    let snapshot = chain.snapshot()?;
+                    if let Some(estado) = try_finalize(chain, &snapshot)? {
+                        report.steps.push(KeeperStep::Finalized { state: estado });
+                        report.finalized += 1;
+                        break;
+                    }
+                }
+            }
+            Err(AgentError::Network(_)) => {
+                // Fallo de infraestructura: se registra y se reintenta.
+                consecutive_transient += 1;
+                report.transient += 1;
+                report.steps.push(KeeperStep::Transient {
+                    error: "fallo de red".into(),
+                });
+                if consecutive_transient >= MAX_CONSECUTIVE_TRANSIENT {
+                    report.stopped_because = Some(format!(
+                        "{consecutive_transient} lecturas fallidas seguidas"
+                    ));
+                    return Ok(report);
+                }
+            }
+            // Cualquier otro error (config, hash, estado invalido) no es de red: se
+            // propaga para que el operador lo vea en vez de esperar en silencio.
+            Err(other) => return Err(other),
         }
 
-        // Ya no hay nada que hacer hasta que el proveedor envíe una correccion.
-        if matches!(state, EscrowState::AttestedPass | EscrowState::AttestedFail) {
-            break;
-        }
         iteration += 1;
         if let Some(max) = config.max_iterations {
             if iteration >= max {
+                report.stopped_because = Some(format!("se alcanzo max_iterations={max}"));
                 break;
             }
         }
@@ -306,12 +527,16 @@ pub fn config_from_env() -> Result<KeeperConfig> {
     let max_iterations = std::env::var("CANGUPA_MAX_ITERATIONS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok());
+    let finalize_on_expiry = std::env::var("CANGUPA_FINALIZE_ON_EXPIRY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
     Ok(KeeperConfig {
         bundle_path: PathBuf::from(bundle_path),
         expected_amount,
         expected_currency,
         poll_interval,
         max_iterations,
+        finalize_on_expiry,
     })
 }
 
@@ -358,6 +583,7 @@ mod tests {
         calls: Mutex<u32>,
         engine: String,
         on_chain: Option<[u8; 32]>,
+        finalize_calls: Mutex<Vec<()>>,
     }
 
     impl FakeChain {
@@ -371,6 +597,7 @@ mod tests {
                 calls: Mutex::new(0),
                 engine,
                 on_chain,
+                finalize_calls: Mutex::new(Vec::new()),
             }
         }
     }
@@ -388,6 +615,8 @@ mod tests {
             } else {
                 states[0]
             };
+            // El ultimo estado devuelto por una lectura simulada hace de estado
+            // vigente, igual que en la cadena.
             Ok(EscrowSnapshot {
                 state,
                 config: EscrowConfigView {
@@ -399,7 +628,15 @@ mod tests {
                     fallback_split_bps: 0,
                 },
                 evidence_bundle_hash: self.on_chain,
+                report_hash: None,
                 attestation_deadline: Some(1_000),
+                funded_at: Some(0),
+                submission_deadline: Some(500),
+                objection_deadline: None,
+                correction_deadline: None,
+                resolution_deadline: None,
+                disputed_at: None,
+                correction_attempts: 0,
                 ledger: 5,
                 ledger_timestamp: 900,
             })
@@ -415,10 +652,24 @@ mod tests {
                 AttestationOutcome::Pass => EscrowState::AttestedPass,
                 AttestationOutcome::Fail => EscrowState::AttestedFail,
             };
+            // `attest()` es de un solo uso: el contrato deja de estar en
+            // `EvidenceSubmitted`. Sin esto el doble aceptaria atestaciones
+            // ilimitadas y no probaria nada sobre el bucle.
+            let mut states = self.states.lock().unwrap();
+            states.clear();
+            states.push(after);
             Ok(SubmitOutcome {
                 hash: TxHash("fake-tx".into()),
                 state_after: after,
             })
+        }
+
+        fn finalize(&self) -> Res<EscrowState> {
+            self.finalize_calls.lock().unwrap().push(());
+            let mut states = self.states.lock().unwrap();
+            states.clear();
+            states.push(EscrowState::Refunded);
+            Ok(EscrowState::Refunded)
         }
     }
 
@@ -442,6 +693,7 @@ mod tests {
             expected_currency: "CPUSD".into(),
             poll_interval: Duration::from_millis(1),
             max_iterations: Some(1),
+            finalize_on_expiry: false,
         }
     }
 
@@ -614,5 +866,188 @@ mod tests {
         assert!(err.to_string().contains("CANGUPA_ENGINE_SECRET"), "{err}");
         assert!(chain.submitted.lock().unwrap().is_empty());
         let _ = engine_signer();
+    }
+    fn snap(state: EscrowState) -> EscrowSnapshot {
+        EscrowSnapshot {
+            state,
+            config: EscrowConfigView {
+                engine: engine_signer().address(),
+                token: "CDUMMY".into(),
+                amount: 1000,
+                attestation_period: 3600,
+                fallback_outcome: 2,
+                fallback_split_bps: 0,
+            },
+            evidence_bundle_hash: Some([1u8; 32]),
+            report_hash: None,
+            attestation_deadline: Some(1_000),
+            funded_at: Some(0),
+            submission_deadline: Some(500),
+            objection_deadline: None,
+            correction_deadline: None,
+            resolution_deadline: None,
+            disputed_at: None,
+            correction_attempts: 0,
+            ledger: 5,
+            ledger_timestamp: 900,
+        }
+    }
+
+    // --- Punto 3: evidencia corregida, vencimientos y reintentos -----------
+
+    #[test]
+    fn keeps_watching_after_a_fail_so_a_correction_can_be_attested() {
+        // Un FAIL no es el final: el proveedor tiene una correccion. El bucle
+        // tiene que seguir vigilando y atestar la evidencia nueva. El bundle lleva
+        // un importe que no cuadra con el esperado, asi que el motor da FAIL.
+        let path = bundle_path("correction", 999);
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let local = build_report(&value, 1000, "CPUSD").unwrap();
+        assert!(!local.is_pass(), "el bundle de este test debe fallar");
+        let chain = FakeChain::new(
+            EscrowState::EvidenceSubmitted,
+            Some(crate::attest::hash_bytes(&local.evidence_bundle_hash)),
+        );
+        let mut cfg = config(&path);
+        cfg.max_iterations = Some(6);
+        // El bundle en disco es un FAIL, asi que el primer attest es un FAIL.
+        let report_out = run_with(&chain, &cfg, &engine_signer()).unwrap();
+        assert_eq!(report_out.attested, 1);
+        assert_eq!(report_out.last_state(), Some(EscrowState::AttestedFail));
+        // No se reintenta sobre el mismo bundle, porque el contrato ya no esta
+        // en EvidenceSubmitted.
+        assert_eq!(
+            *chain.submitted.lock().unwrap(),
+            vec![AttestationOutcome::Fail]
+        );
+    }
+
+    #[test]
+    fn does_not_attest_a_second_time_after_a_pass() {
+        let path = bundle_path("no-repeat", 1000);
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let hash = crate::attest::hash_bytes(
+            &build_report(&value, 1000, "CPUSD")
+                .unwrap()
+                .evidence_bundle_hash,
+        );
+        let chain = FakeChain::new(EscrowState::EvidenceSubmitted, Some(hash));
+        let mut cfg = config(&path);
+        cfg.max_iterations = Some(20);
+        let report_out = run_with(&chain, &cfg, &engine_signer()).unwrap();
+        // `attest()` no es repetible: despues del PASS el contrato sale de
+        // EvidenceSubmitted y el engine no vuelve a firmar.
+        assert_eq!(report_out.attested, 1);
+        assert_eq!(
+            *chain.submitted.lock().unwrap(),
+            vec![AttestationOutcome::Pass]
+        );
+    }
+
+    #[test]
+    fn hash_mismatch_never_signs_and_keeps_watching() {
+        // Bundle en disco que no es el que subio el proveedor: se vigila, no se firma.
+        let path = bundle_path("mismatch", 1000);
+        let chain = FakeChain::new(EscrowState::EvidenceSubmitted, Some([0xaa; 32]));
+        let mut cfg = config(&path);
+        cfg.max_iterations = Some(3);
+        let report_out = run_with(&chain, &cfg, &engine_signer()).unwrap();
+        assert_eq!(report_out.attested, 0);
+        assert!(chain.submitted.lock().unwrap().is_empty());
+        assert!(report_out
+            .steps
+            .iter()
+            .any(|s| matches!(s, KeeperStep::HashMismatch { .. })));
+        // No es terminal: el proveedor todavia puede subir la evidencia correcta.
+        assert_ne!(report_out.last_state(), Some(EscrowState::Refunded));
+    }
+
+    #[test]
+    fn terminal_state_ends_the_watch() {
+        let path = bundle_path("closed", 1000);
+        let chain = FakeChain::new(EscrowState::Released, Some([1u8; 32]));
+        let mut cfg = config(&path);
+        cfg.max_iterations = Some(50);
+        let report_out = run_with(&chain, &cfg, &engine_signer()).unwrap();
+        assert_eq!(report_out.attested, 0);
+        assert!(report_out
+            .steps
+            .iter()
+            .any(|s| matches!(s, KeeperStep::Closed { .. })));
+        // Un estado final no se sigue vigilando: no va a cambiar solo.
+        assert!(*chain.calls.lock().unwrap() <= 2);
+    }
+
+    // --- Punto 4: finalize() con autoridad en el contrato ------------------
+
+    #[test]
+    fn expiry_is_estimated_but_only_under_the_contracts_own_rules() {
+        let mut s = snap(EscrowState::Funded);
+        s.submission_deadline = Some(500);
+        s.ledger_timestamp = 499;
+        assert_eq!(expiry_candidate(&s), None, "el plazo aun no vence");
+        s.ledger_timestamp = 500;
+        assert_eq!(expiry_candidate(&s), Some("submission_deadline"));
+    }
+
+    #[test]
+    fn no_expiry_is_claimed_for_states_without_a_deadline() {
+        // Disputa sin plazo de resolucion legible: no se inventa un vencimiento.
+        let mut s = snap(EscrowState::Disputed);
+        s.resolution_deadline = None;
+        s.ledger_timestamp = u64::MAX;
+        assert_eq!(expiry_candidate(&s), None);
+    }
+
+    #[test]
+    fn each_live_state_maps_to_its_own_deadline() {
+        let cases = [
+            (EscrowState::Funded, "submission_deadline"),
+            (EscrowState::EvidenceSubmitted, "attestation_deadline"),
+            (EscrowState::AttestedPass, "objection_deadline"),
+            (EscrowState::AttestedFail, "correction_deadline"),
+            (EscrowState::Disputed, "resolution_deadline"),
+        ];
+        for (state, plazo) in cases {
+            let mut s = snap(state);
+            s.submission_deadline = Some(1);
+            s.attestation_deadline = Some(1);
+            s.objection_deadline = Some(1);
+            s.correction_deadline = Some(1);
+            s.resolution_deadline = Some(1);
+            s.ledger_timestamp = 1;
+            assert_eq!(expiry_candidate(&s), Some(plazo), "estado {state}");
+        }
+    }
+
+    #[test]
+    fn keeper_calls_finalize_only_when_asked() {
+        let path = bundle_path("nofinalize", 1000);
+        let chain = FakeChain::new(EscrowState::Funded, Some([1u8; 32]));
+        let mut cfg = config(&path);
+        cfg.max_iterations = Some(2);
+        cfg.finalize_on_expiry = false;
+        let _ = run_with(&chain, &cfg, &engine_signer()).unwrap();
+        assert!(chain.finalize_calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn keeper_finalizes_when_the_deadline_looks_expired() {
+        // El doble tiene `Funded` con el plazo vencido, asi que el keeper intenta
+        // `finalize()` y confirma la liquidacion.
+        let path = bundle_path("finalize", 1000);
+        let chain = FakeChain::new(EscrowState::Funded, Some([1u8; 32]));
+        let mut cfg = config(&path);
+        cfg.max_iterations = Some(3);
+        cfg.finalize_on_expiry = true;
+        let report_out = run_with(&chain, &cfg, &engine_signer()).unwrap();
+        assert_eq!(report_out.finalized, 1);
+        assert_eq!(chain.finalize_calls.lock().unwrap().len(), 1);
+        assert!(report_out
+            .steps
+            .iter()
+            .any(|s| matches!(s, KeeperStep::Finalized { .. })));
     }
 }

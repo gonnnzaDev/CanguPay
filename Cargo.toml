@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "contracts/conditional-payment",
+    "contracts/test-token",
     "services/attestation-agent",
 ]
 resolver = "2"
