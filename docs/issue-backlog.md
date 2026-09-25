@@ -106,14 +106,39 @@
 
 **Terminado cuando:**
 
-- [ ] Corrección incrementa attempts a 1, registra nuevo hash y reinicia `attestation_period`.
-- [ ] Una segunda corrección es rechazada, con opción de disputar un nuevo FAIL vigente.
-- [ ] Disputa exige hashes de motivo/evidencia y solo nace desde ATTESTED_PASS/FAIL dentro del plazo.
-- [ ] Resolver puede decidir release/refund/split antes del deadline.
-- [ ] En `DISPUTED`, `finalize()` aplica `fallback_outcome`/`fallback_split_bps` al vencer `resolution_period`.
-- [ ] `split_bps>10000` y extremos para outcome SPLIT son rechazados; se conserva monto.
-- [ ] `DisputeRaised`, `Resolved` y `Finalized(reason)` tienen datos correctos.
-- [ ] Disputa o resolución post-terminal y doble settlement son rechazados.
+- [x] Corrección incrementa attempts a 1, registra nuevo hash y reinicia `attestation_period`. En testnet: `EvidenceSubmitted(attempt: 1, evidence_bundle_hash: 4f2e8d65…)` sobre `CDKAJTH2…`.
+- [x] Una segunda corrección es rechazada, con opción de disputar un nuevo FAIL vigente. En testnet: la segunda `submit_evidence` devuelve `Error(Contract, #5)` y la disputa posterior sí se acepta.
+- [x] Disputa exige hashes de motivo/evidencia y solo nace desde ATTESTED_PASS/FAIL dentro del plazo. En testnet: `DisputeRaised(by: GDWTZTTY…)` con ambos hashes; `finalize()` antes del plazo se rechaza.
+- [x] Resolver puede decidir release/refund/split antes del deadline. En testnet: `Resolved(by: GB35UO2B…, outcome: 3, split_bps: 5000)`.
+- [x] En `DISPUTED`, `finalize()` aplica `fallback_outcome`/`fallback_split_bps` al vencer `resolution_period`. En testnet sobre `CBZ3UQD6…` con `resolution_period=120`: antes del plazo rechaza, al vencer emite `Finalized(reason: 5)`.
+- [x] `split_bps>10000` y extremos para outcome SPLIT son rechazados; se conserva monto. En testnet: `resolve(outcome=3, bps=0)` y `bps=10001` se rechazan; a 3333 bps el reparto fue 3 333 000 000 / 6 667 000 000, exactamente el valor esperado, y la suma se conserva al stroop.
+- [x] `DisputeRaised`, `Resolved` y `Finalized(reason)` tienen datos correctos. Comparación de struct completo en los tests y lectura de los tres eventos en testnet.
+- [x] Disputa o resolución post-terminal y doble settlement son rechazados. En testnet sobre el escrow en `RELEASED`: `raise_dispute`, `resolve`, segundo `approve` y `attest` fallan los cuatro.
+
+#### Verificación en testnet
+
+Ejecutado contra `soroban-testnet.stellar.org` con `stellar` CLI v28.0.0 (protocolo 28). Los secretos de las cinco cuentas de prueba se generaron para esta corrida y **no** están en el repositorio; el token es un contrato de prueba, no CPUSD.
+
+| Contrato | Qué ejercita | ID |
+| --- | --- | --- |
+| Escrow PASS | release completo: initialize → fund → submit_evidence → attest(Pass) → approve | `CAVLH35BXYEMBIF6WAPVEMWZQJ2MLEH6HB5SQE4IX77ABMBUOOUS4MRH` |
+| Escrow FAIL | corrección única, disputa y `resolve` con split | `CDKAJTH2X4FLEQYAOHC7HU23LIDNVLXV6CGM3TQY2VCWEWM5ZQHJFWDC` |
+| Escrow fallback | `finalize()` vencido con fallback split 3333 | `CBZ3UQD6FFL623MSWUGCE6JSP3IIKDZVK5O7O5IO4D3DWWJBTVWCR7UZ` |
+| Token de prueba | `transfer`/`balance` para el fondeo | `CCKJK7K436EY5HVGVPCTV6YCJ26W4D4CYLMCPRE4QZ47VUPP5UT4JQDZ` |
+
+Transacciones del flujo PASS, en orden:
+
+| Paso | tx hash |
+| --- | --- |
+| Subir WASM | `954ef7a6a5a12d507d8b2f5063f9d0dac385c6522aeb5cc8a538321076d8d89a` |
+| Crear contrato | `cd39ac3eea8438efba3c07381d0e06c72b24cf549f46ffb9f8223cdf1c40e0b7` |
+| `initialize` | `57d5d14a25a5cb779fa1e8a5c5ce0dec02c9970bdbdbd9c7461cee170c2965ea` |
+| `fund` | `c18dea5142003778ac4bd3aafda31bebd5cf965117fbd9159d22b285ef447323` |
+| `submit_evidence` | `7c373a3355d2cd1cbaef5035fee4609fe7bbf996b9bf6f6243ca56550d9a991f` |
+| `attest(Pass)` | `8e3f4096820422b02f482f017c854673fba4b9ccf47293e449a73e4273793ab7` |
+| `approve` | `a093edc784f45bc76c128e17c8c1e31c223db2f59ef0e72ee2744557562236c4` |
+
+Del flujo FAIL: `initialize` `5e393519310da89dcd2e4f5d80c075e6cda39ed220bd8e637f079cf097335445`. Los hashes intermedios de `attest`/`submit_evidence`/`raise_dispute`/`resolve` de ese contrato no quedaron registrados en el log de la corrida; se localizan por el contrato y los eventos emitidos.
 
 ### P0-05 — Ejecutar pruebas críticas y desplegar el contrato
 
