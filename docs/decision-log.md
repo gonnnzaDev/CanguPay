@@ -22,6 +22,15 @@ Las entradas **confirmadas** reflejan lo acordado para el prototipo. Las decisio
 
 **Decisión requerida (P0-00):** Gonza y Julián acuerdan si la web será cliente Next.js/TypeScript y el agente Python, con eliminación/traslado de stubs Rust, o si proponen una alternativa que cubra Freighter, API/keeper y build repetible. Documentar la elección, el ABI y el reparto de ownership antes de integrar.
 
+### D-003a · Stack del agente de atestación — elegido para P0-07
+
+**Estado:** elegido para implementar P0-07. La ratificación formal de P0-00 (Gonza, Julián y Linder) sigue pendiente: esto no cierra D-003 ni decide la web.
+
+**Decisión:** el agente de atestación se implementa en **Rust** dentro del workspace, con `stellar-xdr` y `stellar-rpc-client` v27, el mismo protocolo que el contrato (`soroban-sdk 27.0.6`). La alternativa considerada era FastAPI/Python; queda descartada para el agente porque obligaría a mantener el motor de reglas en dos lenguajes y a reimplementar la firma y la serialización XDR.
+
+**Consecuencias:** `app/` (motor Python) se conserva como oráculo de referencia, no como servicio. `docs/ruleset.md` debe registrar que el servicio operativo es el crate Rust. La web sigue sin decidir.
+
+
 ## D-004 · Formato de evidencia — propuesto, pendiente de ratificación
 
 **Propuesta de Linder:** objetos JSON de `fixtures/`, `amount` entero en unidades mínimas CPUSD (10⁻⁷); canonicalización y hashes en `docs/ruleset.md`. Las tres piezas del bundle se hashean juntas; la disputa se registra por separado. Gonza verifica precisión SAC y representación `BytesN<32>`; Julián confirma cómo la UI construye exactamente el mismo bundle.

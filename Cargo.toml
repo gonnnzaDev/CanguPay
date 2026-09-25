@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "contracts/conditional-payment",
+    "services/attestation-agent",
 ]
 resolver = "2"
 
@@ -10,6 +11,15 @@ edition = "2021"
 
 [workspace.dependencies]
 soroban-sdk = "27.0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+stellar-xdr = "27"
+stellar-rpc-client = "27"
+stellar-strkey = "0.0.18"
+ed25519-dalek = "2"
+thiserror = "2"
 
 [profile.release]
 opt-level = "z"

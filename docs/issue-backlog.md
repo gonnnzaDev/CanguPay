@@ -150,11 +150,11 @@
 
 **Terminado cuando:**
 
-- [ ] El mismo bundle produce el mismo reporte/hash.
-- [ ] El hash del bundle presentado coincide con el procesado por el engine.
-- [ ] Un FAIL señala qué campo falló sin inventar datos.
-- [ ] La clave del engine vive fuera del repo y no llega al frontend.
-- [ ] Una invocación exitosa en testnet produce `Attested` y cambia el estado esperado.
+- [x] El mismo bundle produce el mismo reporte/hash. `cargo test -p attestation-agent`: paridad con `fixtures/manifest.json` y con el motor Python en bundles externos al manifiesto.
+- [x] El hash del bundle presentado coincide con el procesado por el engine. El keeper y `attest` rechazan la firma si el hash local difiere del que está en cadena.
+- [x] Un FAIL señala qué campo falló sin inventar datos. `failed_fields` con ruta, estado, valor observado y esperado solo si existe en los datos.
+- [x] La clave del engine vive fuera del repo y no llega al frontend. `CANGUPA_ENGINE_SECRET`/`CANGUPA_ENGINE_KEYFILE`, con rechazo explícito de rutas dentro del repo.
+- [ ] Una invocación exitosa en testnet produce `Attested` y cambia el estado esperado. **Pendiente:** no hay contrato desplegado ni credenciales de la cuenta engine. El camino de envío está implementado (simulación `record`, firma del payload de Soroban, envío y confirmación del estado) y probado contra dobles, pero sin ejecución en red que lo respalde.
 
 ### P0-08 — Inicializar web, red y wallet
 
