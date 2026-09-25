@@ -1817,3 +1817,86 @@ fn fallback_release_refund_split_and_rounding_large_amount_and_deadline_edges() 
         AMOUNT
     );
 }
+
+#[test]
+fn split_rounding_pins_actual_shares_with_independent_expectations() {
+    // El test anterior de redondeo comparaba el resultado de `calc_split_amounts`
+    // consigo mismo, asi que solo comprobaba que se conservara el monto: cualquier
+    // reparto que sumara el total pasaba. Aqui los valores esperados estan escritos a
+    // mano, de modo que un cambio en el reparto rompe el test y tiene que ser una
+    // decision consciente.
+    //
+    // Regla: supplier = (amount / 10_000) * bps + ((amount % 10_000) * bps) / 10_000,
+    // con division entera en los dos cortes; el resto se queda el buyer.
+    let casos: &[(i128, u32, i128, i128)] = &[
+        // amount divisible: el corte es limpio.
+        (10_000, 3_333, 3_333, 6_667),
+        // amount no divisible y resto que no alcanza para un punto entero.
+        (10_001, 3_333, 3_333, 6_668),
+        // amount menor que 10_000: la parte entera es 0 y decide solo el resto.
+        (999, 3_333, 332, 667),
+        // 1 bps sobre un monto pequeno: trunca a cero, el buyer se queda todo.
+        (12_345, 1, 1, 12_344),
+        // 1 bps sobre 10_000_000_000.
+        (10_000_000_000, 1, 1_000_000, 9_999_000_000),
+        // bps maximo sobre el monto minimo: el supplier no puede inventarse nada.
+        (1, 9_999, 0, 1),
+        // 0 bps y 10_000 bps: extremos exactos.
+        (10_000, 0, 0, 10_000),
+        (10_000, 10_000, 10_000, 0),
+    ];
+    for (amount, bps, want_supplier, want_buyer) in casos {
+        let (s, b) = crate::calc_split_amounts(&Env::default(), *amount, *bps);
+        assert_eq!(
+            (s, b),
+            (*want_supplier, *want_buyer),
+            "reparto inesperado para amount={amount} bps={bps}: supplier={s} buyer={b}"
+        );
+        assert_eq!(s + b, *amount, "no se crea ni se destruye monto");
+    }
+}
+
+#[test]
+fn split_of_a_very_large_amount_is_exact_and_conserves() {
+    // i128::MAX/4 multiplicado por 5000 desbordaria i128 si se calculara como
+    // amount * bps. Con el corte en dos, un split al 50% es exactamente la mitad.
+    let large: i128 = i128::MAX / 4;
+    let (s, b) = crate::calc_split_amounts(&Env::default(), large, 5_000);
+    assert_eq!(
+        s,
+        large / 2,
+        "al 50% el supplier se lleva la mitad truncada"
+    );
+    assert_eq!(b, large - s);
+    assert_eq!(s + b, large, "el monto se conserva integro");
+    assert!(s > 0 && b > 0, "ambas partes reciben algo");
+}
+
+#[test]
+fn split_never_moves_more_than_the_amount() {
+    // Invariante de seguridad: por como se componga la division, ninguna parte puede
+    // exceder el monto ni quedar negativa, para ningun bps valido.
+    let amounts: &[i128] = &[1, 7, 9_999, 10_000, 10_001, 1_000_000, i128::MAX / 8];
+    for amount in amounts {
+        for bps in [0u32, 1, 3_333, 5_000, 9_999, 10_000] {
+            let (s, b) = crate::calc_split_amounts(&Env::default(), *amount, bps);
+            assert!(s >= 0, "supplier negativo: amount={amount} bps={bps}");
+            assert!(b >= 0, "buyer negativo: amount={amount} bps={bps}");
+            assert!(
+                s <= *amount,
+                "supplier excede el monto: amount={amount} bps={bps}"
+            );
+            assert!(
+                b <= *amount,
+                "buyer excede el monto: amount={amount} bps={bps}"
+            );
+            assert_eq!(
+                s + b,
+                *amount,
+                "monto no conservado: amount={amount} bps={bps}"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
