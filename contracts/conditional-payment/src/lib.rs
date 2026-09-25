@@ -23,7 +23,8 @@ pub use types::{AttestationOutcome, EscrowConfig, EscrowState, FallbackOutcome, 
 use soroban_sdk::{contract, contractimpl, panic_with_error, token::TokenClient, BytesN, Env};
 
 use crate::events::{
-    Approved, Attested, Cancelled, EscrowCreated, EvidenceSubmitted, Finalized, Funded,
+    Approved, Attested, Cancelled, DisputeRaised, EscrowCreated, EvidenceSubmitted, Finalized,
+    Funded, Resolved,
 };
 use crate::types::{DataKey, Error};
 
@@ -43,6 +44,32 @@ fn read_state(env: &Env) -> EscrowState {
         .unwrap_or_else(|| {
             panic_with_error!(env, Error::NotInitialized);
         })
+}
+
+pub(crate) fn calc_split_amounts(env: &Env, amount: i128, bps: u32) -> (i128, i128) {
+    let bps = bps as i128;
+    // amount * bps / 10000 sin desbordar i128: (amount/10000)*bps + (amount%10000)*bps/10000
+    let base = amount
+        .checked_div(10_000)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let rem = amount
+        .checked_rem(10_000)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let part1 = base
+        .checked_mul(bps)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let part2 = rem
+        .checked_mul(bps)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow))
+        .checked_div(10_000)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let supplier = part1
+        .checked_add(part2)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    let buyer = amount
+        .checked_sub(supplier)
+        .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+    (supplier, buyer)
 }
 
 #[contract]
@@ -90,9 +117,17 @@ impl ConditionalPayment {
                 }
             }
         }
+        if config.max_correction_attempts != 1 {
+            panic_with_error!(&env, Error::InvalidMaxCorrectionAttempts);
+        }
+        // 6 pares: buyer/supplier/engine/resolver deben ser distintos.
+        // Address valida StrKey nativamente al deserializar XDR, no hace falta check manual.
         if config.buyer == config.supplier
             || config.buyer == config.engine
+            || config.buyer == config.resolver
             || config.supplier == config.engine
+            || config.supplier == config.resolver
+            || config.engine == config.resolver
         {
             panic_with_error!(&env, Error::InvalidState);
         }
@@ -103,10 +138,11 @@ impl ConditionalPayment {
             .set(&DataKey::State, &EscrowState::Created);
 
         EscrowCreated {
-            buyer: config.buyer,
-            supplier: config.supplier,
-            engine: config.engine,
-            token: config.token,
+            buyer: config.buyer.clone(),
+            supplier: config.supplier.clone(),
+            engine: config.engine.clone(),
+            resolver: config.resolver.clone(),
+            token: config.token.clone(),
             amount: config.amount,
             submission_period: config.submission_period,
             attestation_period: config.attestation_period,
@@ -115,6 +151,7 @@ impl ConditionalPayment {
             resolution_period: config.resolution_period,
             fallback_outcome: config.fallback_outcome,
             fallback_split_bps: config.fallback_split_bps,
+            max_correction_attempts: config.max_correction_attempts,
         }
         .publish(&env);
     }
@@ -168,42 +205,86 @@ impl ConditionalPayment {
     }
 
     /// El supplier presenta el hash del bundle de evidencia antes del
-    /// `submission_deadline` calculado en el fondeo.
+    /// `submission_deadline` calculado en el fondeo, o como corrección única
+    /// tras `ATTESTED_FAIL` antes de `correction_deadline`.
     pub fn submit_evidence(env: Env, evidence_bundle_hash: BytesN<32>) {
         let config = read_config(&env);
         config.supplier.require_auth();
-        if read_state(&env) != EscrowState::Funded {
-            panic_with_error!(&env, Error::InvalidState);
+        let state = read_state(&env);
+        match state {
+            EscrowState::Funded => {
+                let deadline: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::SubmissionDeadline)
+                    .unwrap();
+                if env.ledger().timestamp() >= deadline {
+                    panic_with_error!(&env, Error::SubmissionDeadlinePassed);
+                }
+                let now = env.ledger().timestamp();
+                let attestation_deadline = now
+                    .checked_add(config.attestation_period)
+                    .expect("attestation_period overflow");
+                env.storage()
+                    .instance()
+                    .set(&DataKey::State, &EscrowState::EvidenceSubmitted);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::EvidenceBundleHash, &evidence_bundle_hash);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::AttestationDeadline, &attestation_deadline);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::CorrectionAttempts, &0u32);
+                EvidenceSubmitted {
+                    attempt: 0,
+                    evidence_bundle_hash,
+                }
+                .publish(&env);
+            }
+            EscrowState::AttestedFail => {
+                let attempts: u32 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::CorrectionAttempts)
+                    .unwrap_or(0);
+                if attempts >= 1 {
+                    panic_with_error!(&env, Error::InvalidState);
+                }
+                let attested_at: u64 = env.storage().instance().get(&DataKey::AttestedAt).unwrap();
+                let deadline = attested_at
+                    .checked_add(config.correction_period)
+                    .expect("correction_period overflow");
+                if env.ledger().timestamp() >= deadline {
+                    panic_with_error!(&env, Error::InvalidState);
+                }
+                let now = env.ledger().timestamp();
+                let attestation_deadline = now
+                    .checked_add(config.attestation_period)
+                    .expect("attestation_period overflow");
+                env.storage()
+                    .instance()
+                    .set(&DataKey::State, &EscrowState::EvidenceSubmitted);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::EvidenceBundleHash, &evidence_bundle_hash);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::AttestationDeadline, &attestation_deadline);
+                env.storage()
+                    .instance()
+                    .set(&DataKey::CorrectionAttempts, &1u32);
+                EvidenceSubmitted {
+                    attempt: 1,
+                    evidence_bundle_hash,
+                }
+                .publish(&env);
+            }
+            _ => {
+                panic_with_error!(&env, Error::InvalidState);
+            }
         }
-        let deadline: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::SubmissionDeadline)
-            .unwrap();
-        if env.ledger().timestamp() >= deadline {
-            panic_with_error!(&env, Error::SubmissionDeadlinePassed);
-        }
-
-        let now = env.ledger().timestamp();
-        let attestation_deadline = now
-            .checked_add(config.attestation_period)
-            .expect("attestation_period overflow");
-
-        env.storage()
-            .instance()
-            .set(&DataKey::State, &EscrowState::EvidenceSubmitted);
-        env.storage()
-            .instance()
-            .set(&DataKey::EvidenceBundleHash, &evidence_bundle_hash);
-        env.storage()
-            .instance()
-            .set(&DataKey::AttestationDeadline, &attestation_deadline);
-
-        EvidenceSubmitted {
-            attempt: 0,
-            evidence_bundle_hash,
-        }
-        .publish(&env);
     }
 
     /// El engine atestigua PASS o FAIL con su `report_hash`. No mueve fondos.
@@ -273,6 +354,156 @@ impl ConditionalPayment {
         .publish(&env);
     }
 
+    /// Abre disputa: solo buyer desde ATTESTED_PASS (dentro de objection_period)
+    /// o supplier desde ATTESTED_FAIL (dentro de correction_period), una sola vez,
+    /// con dos hashes obligatorios. Pasa a DISPUTED y abre resolution_period.
+    pub fn raise_dispute(env: Env, reason_hash: BytesN<32>, dispute_evidence_hash: BytesN<32>) {
+        let config = read_config(&env);
+        let state = read_state(&env);
+        let now = env.ledger().timestamp();
+        match state {
+            EscrowState::AttestedPass => {
+                config.buyer.require_auth();
+                let attested_at: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::AttestedAt)
+                    .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidState));
+                let deadline = attested_at
+                    .checked_add(config.objection_period)
+                    .expect("objection_period overflow");
+                if now >= deadline {
+                    panic_with_error!(&env, Error::InvalidState);
+                }
+            }
+            EscrowState::AttestedFail => {
+                config.supplier.require_auth();
+                let attested_at: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::AttestedAt)
+                    .unwrap_or_else(|| panic_with_error!(&env, Error::InvalidState));
+                let deadline = attested_at
+                    .checked_add(config.correction_period)
+                    .expect("correction_period overflow");
+                if now >= deadline {
+                    panic_with_error!(&env, Error::InvalidState);
+                }
+            }
+            _ => {
+                panic_with_error!(&env, Error::InvalidState);
+            }
+        }
+        let disputed_at = now;
+        let resolution_deadline = disputed_at
+            .checked_add(config.resolution_period)
+            .expect("resolution_period overflow");
+        env.storage()
+            .instance()
+            .set(&DataKey::State, &EscrowState::Disputed);
+        env.storage()
+            .instance()
+            .set(&DataKey::DisputedAt, &disputed_at);
+        env.storage()
+            .instance()
+            .set(&DataKey::ResolutionDeadline, &resolution_deadline);
+        env.storage()
+            .instance()
+            .set(&DataKey::DisputeReasonHash, &reason_hash);
+        env.storage()
+            .instance()
+            .set(&DataKey::DisputeEvidenceHash, &dispute_evidence_hash);
+
+        // Determinar quién disputa para el evento
+        let by = if state == EscrowState::AttestedPass {
+            config.buyer.clone()
+        } else {
+            config.supplier.clone()
+        };
+        DisputeRaised {
+            by,
+            reason_hash,
+            dispute_evidence_hash,
+        }
+        .publish(&env);
+    }
+
+    /// Resolver decide: solo resolver, solo en DISPUTED, antes de resolution_deadline.
+    /// Valida split_bps (Split 1..9999, otros 0) y conserva amount con floor.
+    pub fn resolve(env: Env, outcome: FallbackOutcome, split_bps: u32) {
+        let config = read_config(&env);
+        config.resolver.require_auth();
+        if read_state(&env) != EscrowState::Disputed {
+            panic_with_error!(&env, Error::InvalidState);
+        }
+        let now = env.ledger().timestamp();
+        let deadline: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ResolutionDeadline)
+            .unwrap();
+        if now >= deadline {
+            panic_with_error!(&env, Error::InvalidState);
+        }
+        match outcome {
+            FallbackOutcome::Split => {
+                if !(1..=9_999).contains(&split_bps) {
+                    panic_with_error!(&env, Error::InvalidFallback);
+                }
+            }
+            _ => {
+                if split_bps != 0 {
+                    panic_with_error!(&env, Error::InvalidFallback);
+                }
+            }
+        }
+        let current = env.current_contract_address();
+        let state = match outcome {
+            FallbackOutcome::Release => {
+                TokenClient::new(&env, &config.token).transfer(
+                    &current,
+                    &config.supplier,
+                    &config.amount,
+                );
+                EscrowState::Released
+            }
+            FallbackOutcome::Refund => {
+                TokenClient::new(&env, &config.token).transfer(
+                    &current,
+                    &config.buyer,
+                    &config.amount,
+                );
+                EscrowState::Refunded
+            }
+            FallbackOutcome::Split => {
+                let (supplier_amount, buyer_amount) =
+                    calc_split_amounts(&env, config.amount, split_bps);
+                if supplier_amount > 0 {
+                    TokenClient::new(&env, &config.token).transfer(
+                        &current,
+                        &config.supplier,
+                        &supplier_amount,
+                    );
+                }
+                if buyer_amount > 0 {
+                    TokenClient::new(&env, &config.token).transfer(
+                        &current,
+                        &config.buyer,
+                        &buyer_amount,
+                    );
+                }
+                EscrowState::Split
+            }
+        };
+        env.storage().instance().set(&DataKey::State, &state);
+        Resolved {
+            by: config.resolver.clone(),
+            outcome,
+            split_bps,
+        }
+        .publish(&env);
+    }
+
     /// Ejecuta vencimientos. Permissionless: cualquier cuenta puede invocarla.
     /// - `FUNDED` sin evidencia y `now >= submission_deadline` → `REFUNDED` (`SUBMISSION_TIMEOUT`), reembolsa buyer.
     /// - `EVIDENCE_SUBMITTED` sin atestación y `now >= attestation_deadline` → `REFUNDED` (`ATTESTATION_TIMEOUT`), reembolsa buyer.
@@ -291,11 +522,62 @@ impl ConditionalPayment {
             | EscrowState::Refunded
             | EscrowState::Split => state,
             EscrowState::Disputed => {
-                // Disputed no es terminal en finalize() P0-03; el fallback por
-                // resolution_period se implementa en P0-04. Hasta entonces,
-                // finalize() no liquida Disputed y reporta NotFinalizableYet
-                // si se invoca antes de P0-04.
-                panic_with_error!(&env, Error::NotFinalizableYet);
+                let deadline: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::ResolutionDeadline)
+                    .unwrap();
+                if now < deadline {
+                    panic_with_error!(&env, Error::NotFinalizableYet);
+                }
+                let outcome = config.fallback_outcome;
+                let split_bps = config.fallback_split_bps;
+                if split_bps > 10_000 {
+                    panic_with_error!(&env, Error::InvalidFallback);
+                }
+                let final_state = match outcome {
+                    FallbackOutcome::Release => {
+                        TokenClient::new(&env, &config.token).transfer(
+                            &current,
+                            &config.supplier,
+                            &config.amount,
+                        );
+                        EscrowState::Released
+                    }
+                    FallbackOutcome::Refund => {
+                        TokenClient::new(&env, &config.token).transfer(
+                            &current,
+                            &config.buyer,
+                            &config.amount,
+                        );
+                        EscrowState::Refunded
+                    }
+                    FallbackOutcome::Split => {
+                        let (supplier_amount, buyer_amount) =
+                            calc_split_amounts(&env, config.amount, split_bps);
+                        if supplier_amount > 0 {
+                            TokenClient::new(&env, &config.token).transfer(
+                                &current,
+                                &config.supplier,
+                                &supplier_amount,
+                            );
+                        }
+                        if buyer_amount > 0 {
+                            TokenClient::new(&env, &config.token).transfer(
+                                &current,
+                                &config.buyer,
+                                &buyer_amount,
+                            );
+                        }
+                        EscrowState::Split
+                    }
+                };
+                env.storage().instance().set(&DataKey::State, &final_state);
+                Finalized {
+                    reason: FinalizeReason::ResolutionTimeout,
+                }
+                .publish(&env);
+                final_state
             }
             EscrowState::Created => {
                 panic_with_error!(&env, Error::NotFinalizableYet);

@@ -18,6 +18,8 @@ pub struct EscrowCreated {
     #[topic]
     pub engine: Address,
     #[topic]
+    pub resolver: Address,
+    #[topic]
     pub token: Address,
     pub amount: i128,
     pub submission_period: u64,
@@ -27,6 +29,7 @@ pub struct EscrowCreated {
     pub resolution_period: u64,
     pub fallback_outcome: FallbackOutcome,
     pub fallback_split_bps: u32,
+    pub max_correction_attempts: u32,
 }
 
 #[contractevent]
@@ -64,6 +67,24 @@ pub struct Approved {
     #[topic]
     pub to: Address,
     pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeRaised {
+    #[topic]
+    pub by: Address,
+    pub reason_hash: BytesN<32>,
+    pub dispute_evidence_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Resolved {
+    #[topic]
+    pub by: Address,
+    pub outcome: FallbackOutcome,
+    pub split_bps: u32,
 }
 
 #[contractevent]
