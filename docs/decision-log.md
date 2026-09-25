@@ -14,7 +14,7 @@ Las entradas **confirmadas** reflejan lo acordado para el prototipo. Las decisio
 
 ## D-002 · Nombre CanguPay — 19-09-2026
 
-**Estado:** confirmado por Linder y reflejado en el nombre del repositorio. `CumplePago` es el nombre anterior y debe sustituirse en piezas del equipo. Esto no equivale a una revisión de marca o dominio disponible: anotar el resultado real del chequeo cuando se realice.
+**Estado:** confirmado por Linder y reflejado en el nombre del repositorio. `CumplePago` es el nombre anterior y debe sustituirse en piezas del equipo. Esto no equivale a una revisión de marca o dominio disponible: el resultado real del chequeo quedó anotado en D-006 (25-09-2026).
 
 ## D-003 · Interfaz web y agente — pendiente
 
@@ -48,13 +48,14 @@ Decisión: publicar el backlog P0 con dueño y label en https://github.com/gonnn
 | P0-12 | #14 |
 Reglas derivadas: todo PR escribe `Closes #N` con el número de esta tabla; si un issue se cierra y se recrea, se actualiza esta tabla el mismo día; el tablero Projects es opcional y no condiciona el desarrollo.
 
-## D-006 · Chequeo preliminar de nombre CanguPay — 19-09-2026
-Estado: confirmado por Linder.
-Fuentes consultadas: [lista real: búsqueda general, GitHub, dominios, redes, INDECOPI/INPI si aplicaste]
-Coincidencias encontradas: ninguna confundible en las fuentes consultadas.
-Riesgo: [bajo/medio/alto según lo observado]
+## D-006 · Chequeo preliminar de nombre CanguPay — 19-09-2026 (ejecutado 25-09-2026)
+Estado: confirmado por Linder; chequeo ejecutado el 25-09-2026.
+Fuentes consultadas: búsqueda web general de "CanguPay" y homógrafos; RDAP de Verisign para `.com`; consultas DNS (A/AAAA/NXDOMAIN) para `cangupay.com`, `cangupay.pe`, `cangupay.com.ar`, `cangupay.app`; registro público de empresas en Suiza vía directorio comercial; GitHub.
+Coincidencias encontradas: **ninguna exacta "CanguPay"**. Coincidencia próxima: **Cangopay AG** (Suiza, Alpnach, fundada 08-08-2023, consultoría, UID CHE420456233) — escritura similar, distinto signo y distinto sector; no la consideramos confundible, pero queda anotada. Registros **INDECOPI (Perú) e INPI (Argentina) no se consultaron**: no fueron accesibles desde el entorno del chequeo.
+Dominios: `cangupay.com` **no registrado** (RDAP 404, control `google.com` = 200), `cangupay.pe`, `cangupay.com.ar` y `cangupay.app` sin resolución DNS. Disponibilidad verificada de nuevo antes de comprar o publicar.
+Riesgo: **bajo en las fuentes consultadas** (sin homógrafos exactos y con dominio `.com` libre); **medio en cuanto a registros oficiales**, por no haberse consultado INDECOPI/INPI.
 Decisión: mantener CanguPay como nombre de trabajo para la hackatón.
-Aclaración: chequeo preliminar; no equivale a clearance legal de marca en Perú ni Argentina.
+Aclaración: chequeo preliminar; no equivale a clearance legal de marca en Perú ni Argentina. Si el proyecto sigue más allá de la hackatón: registrar dominio y buscar búsqueda formal de antecedentes en INDECOPI/INPI.
 
 ## D-007 · Stack del agente y cierre parcial de D-003/D-004 — 19-09-2026
 Estado: stack confirmado por Gonza y Julián; mecanismo de lectura on-chain PENDIENTE de su reunión (20 o 21-09).
@@ -90,6 +91,21 @@ Hecho: el commit 92990c4 llevó a main un archivo con la frase de recuperación 
 Acciones completadas: cuenta tratada como comprometida y dejada de usar; cuentas nuevas para los roles afectados; archivo retirado de main; rotación con buenas prácticas (no compartir claves por chat).
 Nota: borrar el archivo no limpia el historial público; la rotación es la mitigación real. Ninguna credencial vuelve al repo: solo placeholders en .env.example.
 
+## D-010 · Licencia MIT para el repositorio — 25-09-2026
+Estado: confirmado por decisión de equipo en P0-12; `LICENSE` estaba vacío.
+Decisión: adoptar **MIT** (texto completo en `LICENSE`, © 2026 CanguPay team) y declararlo en el README. Motivo: licencia corta y permisiva, estándar para proyectos de hackatón y sin fricción para revisores o forks. Alternativas descartadas: Apache-2.0 (más larga, aporta poco en un prototipo sin patentes), GPL-3.0 (copyleft incompatible con la reutilización que queremos).
+Alcance: cubre código, contratos y docs del repo. No cubre la marca CanguPay (ver D-006) ni los fixtures, que son sintéticos y de uso libre.
+
+## D-011 · README, entregables y huecos de P0-12 — 25-09-2026
+Estado: confirmado para la revisión de README; la demo y el video siguen pendientes.
+Decisión:
+- README con nombre CanguPay y sección **Fuente de verdad** que enlaza `docs/issue-backlog.md`, issues #2–#14, `docs/decision-log.md`, `docs/ruleset.md`, `docs/state-machine.md`, `docs/validation-log.md` y `docs/pitch-script.md`.
+- Bloque **Demo, testnet y video** creado con contract ID, tx hashes, explorer y enlace de video **vacíos y marcados como pendientes (P0-11)**: no se afirma ninguna corrida on-chain que no exista.
+- Declaraciones mantenidas: activo sintético CPUSD, doble competencia (Odyssey Perú + Argentina Builder Challenge), Khipu como antecedente sin reutilización de código, sin validación comercial.
+- `docs/validation-log.md`: los tres mensajes de validación asincrónica constan como **no enviados**; plantilla registrada, sin respuestas inventadas.
+- `docs/pitch-script.md`: guion de 90 s, 3 min, video y lista de lenguaje prohibido (USDC, RWA, factoring).
+Pendiente para cerrar P0-12: enlaces de demo/testnet/explorer/video (depende de P0-11) y `docs/demo-scenarios.md`.
+
 ## Registro de cambios
 
 | Fecha | Decisión | Responsable | Efecto |
@@ -101,3 +117,6 @@ Nota: borrar el archivo no limpia el historial público; la rotación es la miti
 | 20-09-2026 | D-008: ForLess01 integra ambas competencias | Equipo | 2 de 4 = 50% Argentina, cumple elegibilidad |
 | 20-09-2026 | D-009: incidente de credencial reportado (rotación pendiente) | Linder | Trazabilidad del incidente; confirmación pendiente de Gonza |
 | 20-09-2026 | D-009: incidente de credencial confirmado y rotado | Gonza, Linder | Cuenta sustituida, archivo retirado de main |
+| 25-09-2026 | D-006: chequeo de marca/dominio ejecutado (sin homógrafos exactos; `.com` libre; INDECOPI/INPI no consultados) | Linder | Nombre CanguPay se mantiene como nombre de trabajo |
+| 25-09-2026 | D-010: licencia MIT adoptada; `LICENSE` escrito | Equipo | Repo publicable con licencia clara |
+| 25-09-2026 | D-011: README con fuente de verdad, guion de pitch/video y log de validación sin enviar | Linder | P0-12 avanzado; demo/video quedan como pendiente de P0-11 |
