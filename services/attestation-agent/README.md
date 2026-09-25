@@ -100,7 +100,20 @@ el payload de la transacción, lo que la red rechaza con `txBAD_AUTH`. Ahora cad
 se firma con su payload, con tests que comprueban que producen firmas distintas y que la
 v2 verifica contra el preimage correcto.
 
-Por eso **no** se publica ningún contract ID ni tx hash: no existen. El comando de
+### Causa del rechazo: XDR 27 contra un nodo en protocolo 28
+
+El repositorio fija `stellar-xdr = "27"` y `soroban-sdk = "27.0.6"`. El nodo de testnet
+corre **protocolo 28**. Con `stellar` CLI v28.0.0 (`stellar-xdr 28.0.0`) el mismo
+despliegue se completa sin incidencias, lo que confirma que el nodo está bien y que el
+problema es el desajuste de versión del toolchain, no la lógica de firma.
+
+Consecuencia práctica: el mismo contrato sí se puede desplegar y ejercitar en testnet
+con el CLI — así se verificó P0-04 de punta a punta — pero el **agente** no puede
+enviar su propia atestación hasta que se migre a XDR/SDK 28. Migrarlo no es trivial:
+cambia el formato de credenciales (CAP-71-02), que este agente ya firma de forma
+correcta para ambas variantes.
+
+Por eso **no** se publica ningún contract ID ni tx hash del agente: no existen. El comando de
 montaje queda listo y es reproducible:
 
 ```bash
