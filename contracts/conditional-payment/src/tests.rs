@@ -1811,7 +1811,7 @@ fn fallback_release_refund_split_and_rounding_large_amount_and_deadline_edges() 
     let e = BytesN::from_array(&ctx5.env, &[11u8; 32]);
     ctx5.client().raise_dispute(&r, &e);
     ctx5.client().resolve(&FallbackOutcome::Split, &1);
-    assert_eq!(ctx5.token_balance(&ctx5.supplier), 1 * AMOUNT / 10_000); // 1 bps
+    assert_eq!(ctx5.token_balance(&ctx5.supplier), AMOUNT / 10_000); // 1 bps
     assert_eq!(
         ctx5.token_balance(&ctx5.buyer) + ctx5.token_balance(&ctx5.supplier),
         AMOUNT
