@@ -69,6 +69,8 @@ export interface EscrowDetailsProps {
   onRefresh?: () => void;
   actionSlot?: React.ReactNode;
   bannerSlot?: React.ReactNode;
+  preparationSlot?: React.ReactNode;
+  eventTimelineSlot?: React.ReactNode;
   viewerRole?: UserRole | null;
   canFinalize?: boolean;
   onCreateEscrow?: () => void;

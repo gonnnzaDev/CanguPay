@@ -12,6 +12,8 @@ import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
+import { DisputePreparation } from "@/components/escrow/DisputePreparation";
+import { EscrowEventTimeline } from "@/components/escrow/EscrowEventTimeline";
 import styles from "@/components/escrow/EscrowVisuals.module.css";
 import { CreateEscrowModal } from "@/components/escrow/CreateEscrowModal";
 import {
@@ -261,6 +263,12 @@ export default function Home() {
             onRefresh={handleRefresh}
             actionSlot={actionSlot}
             bannerSlot={bannerSlot}
+            preparationSlot={currentData && derivedRole && (
+              <DisputePreparation key={`${currentData.operationId}:${derivedRole}:${currentData.status}`} role={derivedRole} status={currentData.status} />
+            )}
+            eventTimelineSlot={!isMock && currentData && onChainConfig && (
+              <EscrowEventTimeline key={contractId} contractId={contractId} config={onChainConfig} />
+            )}
             viewerRole={derivedRole}
             canFinalize={canPreviewFinalize}
             onCreateEscrow={isMock ? () => setIsCreateModalOpen(true) : undefined}
