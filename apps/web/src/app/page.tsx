@@ -120,6 +120,10 @@ export default function Home() {
   // El plazo vigente del estado ya paso: el contrato ya no acepta Aprobar ni
   // Disputar, solo finalize(). Se calcula aparte para no depender de que
   // canFinalize exista, y para no ofrecer acciones que van a ser rechazadas.
+  // El snapshot es lo unico que dice si el plazo vencio. Mientras no llegue, no
+  // se sabe, y por lo tanto no se ofrece ninguna accion.
+  const plazoResuelto = isMock || Boolean(onChainSnapshot && !onChainSnapshot.error);
+
   const deadlineVencido =
     !isMock &&
     currentData?.activeDeadline?.timestamp != null &&
@@ -135,6 +139,7 @@ export default function Home() {
         t,
         currentData.fallbackOutcome,
         Boolean(deadlineVencido),
+        plazoResuelto,
       )
       .filter((action) => isMock || action.id !== "create")
     : [];

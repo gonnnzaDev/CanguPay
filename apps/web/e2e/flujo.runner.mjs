@@ -121,22 +121,26 @@ async function participantes() {
 // Esperar a que la lectura termine: el esqueleto desaparece y la cabecera se
 // estabiliza. Sin esto se muestrea a medio cargar.
 async function estabilizar(page) {
-  let previo = null;
-  let estables = 0;
-  for (let i = 0; i < 60; i++) {
+  // El banner "Contrato sincronizado" solo se pinta cuando el snapshot ya llego.
+  // Antes de eso la web no sabe si el plazo vencio y, por diseno, no ofrece
+  // ninguna accion: esperar por el esqueleto solo no alcanza.
+  const listo = () =>
+    page
+      .evaluate(() => {
+        if (document.querySelector(".animate-pulse")) return false;
+        const b = [...document.querySelectorAll("[role=status]")].map((e) => e.innerText);
+        return b.some((t) => /sincronizado/i.test(t));
+      })
+      .catch(() => false);
+
+  for (let i = 0; i < 40; i++) {
+    if (await listo()) {
+      await sleep(500);
+      if (await listo()) return true;
+    }
     await sleep(500);
-    const est = await page
-      .evaluate(() => ({
-        esq: !!document.querySelector(".animate-pulse"),
-        cab: (document.querySelector("header")?.textContent ?? "").replace(/\s+/g, " "),
-      }))
-      .catch(() => null);
-    if (!est) continue;
-    if (!est.esq && est.cab && est.cab === previo) {
-      if (++estables >= 2) return;
-    } else estables = 0;
-    previo = est.cab;
   }
+  return false;
 }
 
 async function estado(page) {
@@ -184,7 +188,7 @@ async function abrir(page, opts) {
   if (opts.direccion) await instalarWallet(page, opts);
   else await page.addInitScript(() => localStorage.setItem("cangupay_freighter_connected", "false"));
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
-  await estabilizar(page);
+  if (!(await estabilizar(page))) ruido.push("el snapshot no llego: la web no llego al estado sincronizado");
   return ruido;
 }
 

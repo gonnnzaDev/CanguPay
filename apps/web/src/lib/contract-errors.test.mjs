@@ -100,6 +100,26 @@ test("con el plazo vivo el comprador si ve Aprobar y Disputar", () => {
   assert.ok(ids.includes("dispute_pass"), `debe ofrecer Disputar: ${ids.join(",")}`);
 });
 
+test("sin snapshot no se ofrece ninguna accion: no se sabe si el plazo vencio", () => {
+  // Esta es la ventana en la que la web ya tiene estado y config pero todavia no
+  // el snapshot. Si se ofrece algo, seria ofrecer Aprobar a ciegas.
+  for (const rol of ["buyer", "supplier", "resolver", "observer"]) {
+    for (const estado of ["ATTESTED_PASS", "ATTESTED_FAIL", "FUNDED", "DISPUTED"]) {
+      const ids = getAvailableActions(rol, estado, true, undefined, "REFUND", false, false).map(
+        (a) => a.id,
+      );
+      assert.deepEqual(ids, [], `rol ${rol} en ${estado} ofrece ${ids.join(",")} sin saber el plazo`);
+    }
+  }
+});
+
+test("con el snapshot resuelto el plazo vivo si ofrece las acciones del estado", () => {
+  const ids = getAvailableActions("buyer", "ATTESTED_PASS", false, undefined, "REFUND", false, true).map(
+    (a) => a.id,
+  );
+  assert.ok(ids.includes("approve"), `debe ofrecer Aprobar: ${ids.join(",")}`);
+});
+
 test("finalizar sigue disponible para cualquiera: el contrato no exige rol", () => {
   for (const rol of ["buyer", "supplier", "resolver", "observer"]) {
     const ids = getAvailableActions(rol, "ATTESTED_PASS", true, undefined, "REFUND", true).map(

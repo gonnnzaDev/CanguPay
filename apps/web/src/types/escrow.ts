@@ -221,9 +221,17 @@ export function getAvailableActions(
   t?: (key: string, params?: Record<string, string | number>) => string,
   fallbackOutcome?: FallbackOutcome | null,
   /** El plazo activo del estado ya vencio: lo unico que queda es finalizar. */
-  deadlineVencido: boolean = false
+  deadlineVencido: boolean = false,
+  /**
+   * Se pudo leer el snapshot y por tanto se sabe si el plazo vencio. Mientras no
+   * se sepa, no se ofrece ninguna accion: sin el snapshot no se distingue "el
+   * plazo sigue vivo" de "el plazo ya paso", y ofrecer Aprobar o Disutar a
+   ciegas es ofrecer algo que el contrato va a rechazar.
+   */
+  plazoResuelto: boolean = true
 ): EscrowAction[] {
   if (isTerminalStatus(status)) return [];
+  if (!plazoResuelto) return [];
 
   const tr = (key: string, fallback: string) => {
     if (!t) return fallback;
