@@ -37,6 +37,7 @@ export default function Home() {
 
   const {
     address,
+    isConnected,
     network,
     networkPassphrase,
     isExactTestnet,
@@ -214,7 +215,7 @@ export default function Home() {
             <ThemeSwitcher />
             <LanguageSwitcher />
 
-            {isFreighterInstalled && <div
+            {isConnected && isFreighterInstalled && <div
               className={`flex items-center font-mono text-xs border rounded-lg overflow-hidden shadow-2xs ${
                 isExactTestnet
                     ? "border-teal-500/30 bg-teal-500/5 text-teal-700 dark:text-teal-300"

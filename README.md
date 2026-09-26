@@ -52,10 +52,10 @@ Los roles deben ser cuentas distintas entre sí.
 |---|---|
 | Contrato | Rust / Soroban (una instancia por operación) |
 | Agente + keeper | Por acordar en P0-00; actualmente hay un stub Rust y un verificador Python local |
-| Frontend | Por acordar en P0-00; Freighter es requisito para la demo |
+| Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS v4, @stellar/freighter-api |
 | Activo | CPUSD en testnet vía Stellar Asset Contract |
 
-El tiempo lo decide siempre `env.ledger().timestamp()`, nunca el reloj del navegador. El contrato, el agente on-chain y la interfaz todavía no implementan el flujo descrito.
+El tiempo lo decide siempre `env.ledger().timestamp()`, nunca el reloj del navegador.
 
 ## Estructura
 

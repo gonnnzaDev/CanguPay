@@ -40,14 +40,14 @@ export const CreateEscrowModal: React.FC<CreateEscrowModalProps> = ({
   onCreated,
 }) => {
   const { t } = useLanguage();
-  const defaultBuyer = buyerAddress || "GBUYER4X9Z2K1L3M4N5O6P7Q8R9S0T1U2V3W4X9Z";
+  const defaultBuyer = buyerAddress || "GCOE5B5Z3A4DMRVTALNJLRJXIVDCPBN4C3JKLPIAH5FVPYCNDF6BTRHW";
   const [buyerInput, setBuyerInput] = useState<string | null>(null);
   const buyer = buyerInput ?? defaultBuyer;
 
-  const [supplier, setSupplier] = useState("GSUPPLIER8K2L3M4N5O6P7Q8R9S0T1U2V3W4X8K2L");
-  const [resolver, setResolver] = useState("GRESOLVER9P0R1S2T3U4V5W6X7Y8Z9A0B1C2D9P0R");
-  const [engine, setEngine] = useState("GENGINE1V3M4N5O6P7Q8R9S0T1U2V3W4X5Y6Z1V3M");
-  const [token, setToken] = useState("CCPUSDT5K7SOROBANTOKENIDTESTNETCANGUPAY2026");
+  const [supplier, setSupplier] = useState("GCEH6K4HV2COCHC3BFH3LPSFXFDFQ25Y264M45FSDMLSRGYXLOLAXV2K");
+  const [resolver, setResolver] = useState("GCV5JNX6GKCQCVSB3WUAJ7IU2YQ22BMYLW5LYCHISNAYUYQE7NYIVPWS");
+  const [engine, setEngine] = useState("GA4HQB6P3Z3OUCBHRSIUGX7PSPCSQJ6B65IZTDMQYIJJKDNUAEXRSKGL");
+  const [token, setToken] = useState("CBRWC3THOVYGC6K7ORXWWZLOL5RW63TUOJQWG5C7ORSXG5DOMV2F6ODO");
   const [amount, setAmount] = useState("10,000.0000000");
   const [fallbackOutcome, setFallbackOutcome] = useState<FallbackOutcome>("SPLIT");
   const [fallbackSplitBps, setFallbackSplitBps] = useState<number>(5000);
