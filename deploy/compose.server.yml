@@ -1,0 +1,76 @@
+# CanguPay: pila de servidor.
+#
+# Solo web y keeper. Los contratos no se "levantan": se despliegan una vez en
+# la red con el CLI y a partir de ahi viven en la cadena. El nodo Stellar tampoco
+# va aqui: se usa la red publica.
+#
+#   docker compose -f deploy/compose.server.yml up -d
+#
+# Todas las configuracion viene de un .env en la raiz (ver deploy/.env.example).
+# Las claves llegan por entorno desde el gestor de secretos del servidor, no
+# desde un fichero del repo.
+
+name: cangupay
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  web:
+    image: ${CANGUPAY_WEB_IMAGE:-cangupay/web:latest}
+    build:
+      context: ..
+      dockerfile: deploy/docker/web.Dockerfile
+      args:
+        # Se compila aqui, no en el servidor: cambiar el contrato exige
+        # reconstruir la imagen, porque NEXT_PUBLIC_* se inlinea en build.
+        NEXT_PUBLIC_SOROBAN_RPC_URL: ${NEXT_PUBLIC_SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
+        NEXT_PUBLIC_ESCROW_CONTRACT_ID: ${NEXT_PUBLIC_ESCROW_CONTRACT_ID:?falta NEXT_PUBLIC_ESCROW_CONTRACT_ID}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    <<: *logging
+    # El frontend no necesita la clave del motor. Mantenerlo asi permite
+    # separarlos: si el web se expone, el keeper sigue cerrado.
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  keeper:
+    image: ${CANGUPAY_AGENT_IMAGE:-cangupay/agent:latest}
+    build:
+      context: ..
+      dockerfile: deploy/docker/agent.Dockerfile
+    restart: unless-stopped
+    environment:
+      CANGUPA_RPC_URL: ${CANGUPA_RPC_URL:?falta CANGUPA_RPC_URL}
+      CANGUPA_NETWORK: ${CANGUPA_NETWORK:?falta CANGUPA_NETWORK}
+      CANGUPA_CONTRACT_ID: ${CANGUPA_CONTRACT_ID:?falta CANGUPA_CONTRACT_ID}
+      CANGUPA_BUNDLE: ${CANGUPA_BUNDLE:?falta CANGUPA_BUNDLE}
+      CANGUPA_EXPECTED_AMOUNT: ${CANGUPA_EXPECTED_AMOUNT:?falta CANGUPA_EXPECTED_AMOUNT}
+      # Direccion del token del contrato (C...), no un codigo de divisa.
+      CANGUPA_EXPECTED_CURRENCY: ${CANGUPA_EXPECTED_CURRENCY:?falta CANGUPA_EXPECTED_CURRENCY}
+      CANGUPA_POLL_SECONDS: ${CANGUPA_POLL_SECONDS:-10}
+      CANGUPA_MAX_ITERATIONS: ${CANGUPA_MAX_ITERATIONS:-0}
+      CANGUPA_FINALIZE_ON_EXPIRY: ${CANGUPA_FINALIZE_ON_EXPIRY:-1}
+      # El secreto llega por entorno. Si el servidor usa Docker secrets,
+      #montarlo en /run/secrets y apuntar aqui CANGUPA_ENGINE_KEYFILE.
+      CANGUPA_ENGINE_SECRET: ${CANGUPA_ENGINE_SECRET:-}
+      CANGUPA_ENGINE_KEYFILE: ${CANGUPA_ENGINE_KEYFILE:-}
+    command: ["keeper"]
+    <<: *logging
+    read_only: true
+    tmpfs:
+      - /tmp

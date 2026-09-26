@@ -1,0 +1,54 @@
+# Contexto de build: desde la raiz del repo.
+# .dockerignore
+#
+# Excluir target/ es lo que mas impacto tiene: sin esto el contexto del build
+# del agente arrastra varios GB de artefactos rust en cada compilacion.
+
+# Artefactos de compilacion
+target/
+**/target/
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+dist/
+build/
+*.wasm
+
+# Secretos y entorno. El .env.example si se copia, por si la imagen lo necesita.
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.docker.example
+deploy/.env.example
+**/*.pem
+**/*.key
+**/*.seed
+**/id.json
+
+# VCS y sistema
+.git/
+.gitignore
+.github/
+**/.git
+**/.DS_Store
+Thumbs.db
+
+# Documentacion y recursos que no hacen falta en la imagen
+docs/
+*.md
+!README.md
+fixtures/**/*.md
+
+# Editores y varios
+.vscode/
+.idea/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/.pytest_cache/
+**/coverage/
+**/*.log

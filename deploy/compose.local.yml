@@ -1,0 +1,168 @@
+# CanguPay: pila local.
+#
+#   Solo el frontend ....................... docker compose -f deploy/compose.local.yml up web
+#   Bateria completa de pruebas ............ docker compose -f deploy/compose.local.yml --profile test run --rm tests
+#   Compilar los contratos ................. docker compose -f deploy/compose.local.yml --profile build run --rm contracts
+#   Nodo Stellar local ..................... docker compose -f deploy/compose.local.yml --profile localnet up -d stellar
+#   Keeper contra la red ................... docker compose -f deploy/compose.local.yml --profile agent up keeper
+#
+# Los perfiles existen para que "up" sin argumentos no te levante media tester-
+# net ni un nodo de 2 GB por sorpresa. El nodo local es para desarrollo: la
+# red de pruebas real es la de siempre.
+#
+# AVISO: este fichero no se ha podido ejecutar aqui porque no hay docker
+# instalado en el entorno donde se escribio. Los nombres de opciones de la
+# imagen stellar/quickstart estan sin verificar; si el contenedor no arranca,
+# mira `docker run --rm stellar/quickstart --help` y ajusta el command.
+
+name: cangupay-local
+
+x-anchor: &anchor
+  working_dir: /src
+  volumes:
+    - ../:/src:cached
+
+services:
+  # ---------- frontend ----------
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/docker/web.Dockerfile
+      args:
+        # Se compilan dentro de la imagen: NEXT_PUBLIC_* se inlinea en build.
+        NEXT_PUBLIC_SOROBAN_RPC_URL: ${NEXT_PUBLIC_SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
+        NEXT_PUBLIC_ESCROW_CONTRACT_ID: ${NEXT_PUBLIC_ESCROW_CONTRACT_ID:-}
+    image: cangupay/web:local
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
+
+  # ---------- bateria de pruebas ----------
+  tests:
+    profiles: ["test"]
+    build:
+      context: ..
+      dockerfile: deploy/docker/tests.Dockerfile
+    image: cangupay/tests:local
+    <<: *anchor
+    environment:
+      PYTHONPATH: /src/services/attestation-agent
+      # Los tests de Python necesitan las fixtures en el arbol del repo.
+      PYTHONDONTWRITEBYTECODE: "1"
+    command: ["bash", "scripts/test_roles_workflow.sh"]
+
+  # Tests del frontend, que viven aparte porque necesitan node y pnpm.
+  web-tests:
+    profiles: ["test"]
+    image: node:24-bookworm-slim
+    working_dir: /src/apps/web
+    volumes:
+      - ../:/src:cached
+    environment:
+      NEXT_PUBLIC_SOROBAN_RPC_URL: ${NEXT_PUBLIC_SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org}
+      NEXT_PUBLIC_ESCROW_CONTRACT_ID: ${NEXT_PUBLIC_ESCROW_CONTRACT_ID:-}
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        corepack enable && corepack prepare pnpm@11.9.0 --activate
+        pnpm install --frozen-lockfile
+        pnpm exec tsc --noEmit
+        pnpm build
+        # Los .test.mjs se ejecutan con el runner de node, sin jest.
+        node --test $(find src -name '*.test.*')
+
+  # ---------- contratos ----------
+  contracts:
+    profiles: ["build"]
+    build:
+      context: ..
+      dockerfile: deploy/docker/contracts.Dockerfile
+      args:
+        STELLAR_CLI_VERSION: ${STELLAR_CLI_VERSION:-25.2.0}
+    image: cangupay/contracts:local
+    volumes:
+      # Los WASM salen al host para poder desplegarlos con el CLI.
+      - ../target/wasm32v1-none/release:/artifacts-out
+
+  # ---------- nodo Stellar local ----------
+  # Solo desarrollo. PASS phrase de la red local de quickstart.
+  stellar:
+    profiles: ["localnet"]
+    image: stellar/quickstart:testing
+    command: >
+      --enable rpc,horizon
+      --rpc-port 8000
+      --horizon-port 8080
+      --network-passphrase "Local Sandbox Stellar Network ; September 2022"
+    ports:
+      - "8000:8000"   # rpc
+      - "8080:8080"   # horizon
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  # ---------- agente ----------
+  # Keeper: vigila el contrato y atesta/finaliza solo. Es el unico servicio con
+  # clave, asi que vive en su propio perfil.
+  keeper:
+    profiles: ["agent"]
+    build:
+      context: ..
+      dockerfile: deploy/docker/agent.Dockerfile
+    image: cangupay/agent:local
+    environment:
+      CANGUPA_RPC_URL: ${CANGUPA_RPC_URL:-https://soroban-testnet.stellar.org}
+      CANGUPA_NETWORK: ${CANGUPA_NETWORK:-Test SDF Network ; September 2015}
+      CANGUPA_CONTRACT_ID: ${CANGUPA_CONTRACT_ID:?falta CANGUPA_CONTRACT_ID}
+      CANGUPA_BUNDLE: ${CANGUPA_BUNDLE:?falta CANGUPA_BUNDLE}
+      CANGUPA_EXPECTED_AMOUNT: ${CANGUPA_EXPECTED_AMOUNT:?falta CANGUPA_EXPECTED_AMOUNT}
+      # OJO: es la direccion del token del contrato, no un codigo de divisa.
+      CANGUPA_EXPECTED_CURRENCY: ${CANGUPA_EXPECTED_CURRENCY:?falta CANGUPA_EXPECTED_CURRENCY}
+      CANGUPA_ENGINE_SECRET: ${CANGUPA_ENGINE_SECRET:?falta CANGUPA_ENGINE_SECRET}
+      CANGUPA_POLL_SECONDS: ${CANGUPA_POLL_SECONDS:-10}
+      CANGUPA_MAX_ITERATIONS: ${CANGUPA_MAX_ITERATIONS:-60}
+      CANGUPA_FINALIZE_ON_EXPIRY: ${CANGUPA_FINALIZE_ON_EXPIRY:-0}
+    command: ["keeper"]
+    restart: unless-stopped
+
+  # Atestado puntual de un bundle, para correr a mano cuando haga falta.
+  attest:
+    profiles: ["agent"]
+    build:
+      context: ..
+      dockerfile: deploy/docker/agent.Dockerfile
+    image: cangupay/agent:local
+    environment:
+      CANGUPA_RPC_URL: ${CANGUPA_RPC_URL:-https://soroban-testnet.stellar.org}
+      CANGUPA_NETWORK: ${CANGUPA_NETWORK:-Test SDF Network ; September 2015}
+      CANGUPA_CONTRACT_ID: ${CANGUPA_CONTRACT_ID:?falta CANGUPA_CONTRACT_ID}
+      CANGUPA_BUNDLE: ${CANGUPA_BUNDLE:?falta CANGUPA_BUNDLE}
+      CANGUPA_EXPECTED_AMOUNT: ${CANGUPA_EXPECTED_AMOUNT:?falta CANGUPA_EXPECTED_AMOUNT}
+      CANGUPA_EXPECTED_CURRENCY: ${CANGUPA_EXPECTED_CURRENCY:?falta CANGUPA_EXPECTED_CURRENCY}
+      CANGUPA_ENGINE_SECRET: ${CANGUPA_ENGINE_SECRET:?falta CANGUPA_ENGINE_SECRET}
+    command: ["attest", "--json"]
+    restart: "no"
+
+  # Lectura del estado del contrato. No lleva clave: comprobarla no debe
+  # requerir el secreto de la engine, o el script de humo no podria correr
+  # mientras el .env esta a medias.
+  read-state:
+    profiles: ["agent", "build", "test"]
+    build:
+      context: ..
+      dockerfile: deploy/docker/agent.Dockerfile
+    image: cangupay/agent:local
+    environment:
+      CANGUPA_RPC_URL: ${CANGUPA_RPC_URL:-https://soroban-testnet.stellar.org}
+      CANGUPA_NETWORK: ${CANGUPA_NETWORK:-Test SDF Network ; September 2015}
+    entrypoint: ["cangu-attest"]
+    command: ["--help"]
+    restart: "no"
