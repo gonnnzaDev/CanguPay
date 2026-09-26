@@ -151,7 +151,11 @@ function isFallbackOutcome(value: unknown): value is FallbackOutcome {
 export function mapOnChainEscrow(
   state: string | null,
   config: unknown,
-  contractId: string
+  contractId: string,
+  extra?: {
+    hashes?: EscrowHashes;
+    activeDeadline?: EscrowDeadline;
+  } | null
 ): EscrowDetailsData | null {
   if (!state || !escrowStatuses.includes(state)) return null;
   const cfg = config && typeof config === "object" && !Array.isArray(config)
@@ -174,7 +178,8 @@ export function mapOnChainEscrow(
       resolver: text(source.resolver),
       engine: text(source.engine),
     },
-    hashes: {},
+    hashes: extra?.hashes ?? {},
+    activeDeadline: extra?.activeDeadline,
     fallbackOutcome,
     fallbackSplitBps: typeof cfg.fallbackSplitBps === "number" ? cfg.fallbackSplitBps : undefined,
   };

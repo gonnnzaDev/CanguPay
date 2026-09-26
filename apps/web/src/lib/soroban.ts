@@ -1,7 +1,12 @@
 "use client";
 
 import * as StellarSdk from "@stellar/stellar-sdk";
-import type { EscrowStatus, FallbackOutcome } from "../types/escrow";
+import type {
+  EscrowDeadline,
+  EscrowHashes,
+  EscrowStatus,
+  FallbackOutcome,
+} from "../types/escrow";
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
 const CONTRACT_ID = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ID || "";
@@ -124,6 +129,112 @@ export async function fetchOnChainEscrow(contractId: string = CONTRACT_ID): Prom
       config: null,
       state: null,
       rawConfig: null,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+export function parseBytes32(val: unknown): string | undefined {
+  if (!val) return undefined;
+  if (typeof val === "string") {
+    const clean = val.replace(/^0x/i, "").toLowerCase();
+    return clean.length === 64 ? clean : undefined;
+  }
+  if (val instanceof Uint8Array || Buffer.isBuffer(val)) {
+    if (val.length === 32) return Buffer.from(val).toString("hex").toLowerCase();
+  }
+  if (typeof val === "object" && val !== null) {
+    const bytes = Object.values(val as Record<string, number>);
+    if (bytes.length === 32 && bytes.every((b) => typeof b === "number")) {
+      return Buffer.from(bytes).toString("hex").toLowerCase();
+    }
+  }
+  return undefined;
+}
+
+export interface EscrowSnapshotResult {
+  state: EscrowStatus | null;
+  config: Record<string, unknown> | null;
+  hashes: EscrowHashes;
+  activeDeadline?: EscrowDeadline;
+  ledgerTimestamp?: number;
+  correctionAttempts?: number;
+  error?: string;
+}
+
+export async function fetchOnChainSnapshot(
+  contractId: string = CONTRACT_ID
+): Promise<EscrowSnapshotResult> {
+  if (!contractId) {
+    return { state: null, config: null, hashes: {}, error: "NEXT_PUBLIC_ESCROW_CONTRACT_ID vacío" };
+  }
+  const srv = getServer();
+  if (!srv) {
+    return { state: null, config: null, hashes: {}, error: "RPC no disponible en SSR" };
+  }
+
+  try {
+    const snapResponse = await srv.queryContract<Record<string, unknown>>(contractId, "snapshot");
+    if (!snapResponse.isReadCall) throw new Error("Snapshot query is not read-only");
+    const snap = snapResponse.result;
+    if (!snap || typeof snap !== "object") throw new Error("Invalid snapshot returned by contract");
+
+    const state = mapEscrowState(snap.state);
+    const config = mapEscrowConfig(snap.config);
+
+    const hashes: EscrowHashes = {};
+    const reasonHash = parseBytes32(snap.dispute_reason_hash);
+    if (reasonHash) hashes.reasonHash = reasonHash;
+    const disputeEvidenceHash = parseBytes32(snap.dispute_evidence_hash);
+    if (disputeEvidenceHash) hashes.disputeEvidenceHash = disputeEvidenceHash;
+    const reportHash = parseBytes32(snap.report_hash);
+    if (reportHash) hashes.reportHash = reportHash;
+    const evidenceBundleHash = parseBytes32(snap.evidence_bundle_hash);
+    if (evidenceBundleHash) hashes.evidenceBundleHash = evidenceBundleHash;
+
+    const toSecs = (val: unknown): number | undefined => {
+      if (typeof val === "number") return val;
+      if (typeof val === "bigint" || typeof val === "string") {
+        const n = Number(val);
+        return Number.isFinite(n) ? n : undefined;
+      }
+      return undefined;
+    };
+
+    let activeDeadline: EscrowDeadline | undefined;
+    if (state === "DISPUTED" && snap.resolution_deadline) {
+      const ts = toSecs(snap.resolution_deadline);
+      if (ts) activeDeadline = { type: "resolution", label: "Resolución de Disputa (Árbitro)", timestamp: ts };
+    } else if (state === "ATTESTED_PASS" && snap.objection_deadline) {
+      const ts = toSecs(snap.objection_deadline);
+      if (ts) activeDeadline = { type: "action", label: "Objeción de Comprador", timestamp: ts };
+    } else if (state === "ATTESTED_FAIL" && snap.correction_deadline) {
+      const ts = toSecs(snap.correction_deadline);
+      if (ts) activeDeadline = { type: "submission", label: "Corrección de Proveedor", timestamp: ts };
+    } else if (state === "EVIDENCE_SUBMITTED" && snap.attestation_deadline) {
+      const ts = toSecs(snap.attestation_deadline);
+      if (ts) activeDeadline = { type: "attestation", label: "Atestación de Motor", timestamp: ts };
+    } else if (state === "FUNDED" && snap.submission_deadline) {
+      const ts = toSecs(snap.submission_deadline);
+      if (ts) activeDeadline = { type: "submission", label: "Entrega de Proveedor", timestamp: ts };
+    }
+
+    const ledgerTimestamp = toSecs(snap.ledger_timestamp);
+    const correctionAttempts = typeof snap.correction_attempts === "number" ? snap.correction_attempts : undefined;
+
+    return {
+      state,
+      config,
+      hashes,
+      activeDeadline,
+      ledgerTimestamp,
+      correctionAttempts,
+    };
+  } catch (e) {
+    return {
+      state: null,
+      config: null,
+      hashes: {},
       error: e instanceof Error ? e.message : String(e),
     };
   }
