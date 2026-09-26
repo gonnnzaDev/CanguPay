@@ -4,7 +4,7 @@ import { after, before, test } from "node:test";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 // Node 24 can load this TypeScript module directly; the app's TS config does not enable .ts import specifiers.
-const { fetchOnChainEscrow, mapEscrowConfig, mapEscrowState } = createRequire(import.meta.url)(
+const { fetchOnChainEscrow, fetchOnChainSnapshot, isCompleteEscrowConfig, mapEscrowConfig, mapEscrowState } = createRequire(import.meta.url)(
   "./soroban.ts"
 ) as typeof import("./soroban");
 
@@ -79,6 +79,17 @@ test("maps the explicit numeric fallback discriminants and rejects unknown value
   }
 });
 
+test("only marks snapshots complete when all EscrowConfig fields are present", () => {
+  const complete = {
+    amount: BigInt(10), attestationPeriod: 1, buyer: "GBUYER", correctionPeriod: 1,
+    engine: "GENGINE", fallbackOutcome: "RELEASE", fallbackSplitBps: 0,
+    maxCorrectionAttempts: 1, objectionPeriod: 1, resolutionPeriod: 1,
+    resolver: "GRESOLVER", submissionPeriod: 1, supplier: "GSUPPLIER", token: "GTOKEN",
+  };
+  assert.equal(isCompleteEscrowConfig(complete), true);
+  assert.equal(isCompleteEscrowConfig({ buyer: "GBUYER" }), false);
+});
+
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
 const originalQuery = StellarSdk.rpc.Server.prototype.queryContract;
 
@@ -141,4 +152,14 @@ test("unknown state and malformed config fail closed", async () => {
     assert.equal(result.config, null);
     assert.ok(result.error);
   }
+});
+
+test("does not treat an incomplete snapshot as a complete on-chain read", async () => {
+  setQueryResponse((_id, method) => {
+    assert.equal(method, "snapshot");
+    return { result: { state: "Funded", config: { buyer: "GBUYER" } }, isReadCall: true };
+  });
+  const result = await fetchOnChainSnapshot("CONTRACT");
+  assert.equal(result.state, null);
+  assert.match(result.error ?? "", /incomplete snapshot/i);
 });

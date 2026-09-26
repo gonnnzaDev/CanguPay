@@ -215,6 +215,8 @@ export const en: typeof es = {
     unavailable: "Unavailable",
     onchain_data_badge: "Partial contract read",
     onchain_partial: "Some details are unavailable and actions are not enabled yet.",
+    onchain_complete_badge: "Contract synchronized",
+    onchain_complete: "Complete read of the contract state, configuration, and active deadlines.",
     onchain_unavailable_title: "Contract state unavailable",
     onchain_unavailable_desc: "The configured contract has not returned a recognized state. Refresh to retry; no preview values are substituted.",
     mock_only: "Example amounts, addresses and deadlines; no real funds or three-role wallet demo are available.",
@@ -389,5 +391,4 @@ export const en: typeof es = {
     },
   },
 };
-
 

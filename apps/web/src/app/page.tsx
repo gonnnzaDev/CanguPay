@@ -26,6 +26,7 @@ import {
 
 import { mockEscrows } from "@/dev/mockEscrow";
 import { fetchOnChainEscrow, fetchOnChainSnapshot, type EscrowSnapshotResult } from "@/lib/soroban";
+import { buildContractCallTx, bytes32ToScVal, submitSorobanTransaction } from "@/lib/dispute-tx";
 
 export default function Home() {
   const { t } = useLanguage();
@@ -47,7 +48,12 @@ export default function Home() {
     networkPassphrase,
     isExactTestnet,
     isFreighterInstalled,
+    signTransactionGuard,
   } = useWallet();
+  const [evidenceHash, setEvidenceHash] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccessHash, setActionSuccessHash] = useState<string | null>(null);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
   const contractId = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ID || "";
 
@@ -104,16 +110,65 @@ export default function Home() {
   // A preview timeout is explicit and only applies to a known, eligible deadline.
   const canPreviewFinalize = isMock && isSimulatingExpired && Boolean(address) &&
     Boolean(currentData?.activeDeadline?.timestamp) && currentData?.status !== "CREATED";
+  const canOnChainFinalize = !isMock && Boolean(currentData?.activeDeadline?.timestamp) &&
+    Boolean(onChainSnapshot?.ledgerTimestamp) &&
+    (onChainSnapshot?.ledgerTimestamp ?? 0) >= (currentData?.activeDeadline?.timestamp ?? Infinity);
+  const canFinalize = canPreviewFinalize || canOnChainFinalize;
 
   const derivedRole = deriveWalletRole(address, currentData?.parties);
   const availableActions = currentData
-    ? getAvailableActions(derivedRole, currentData.status, canPreviewFinalize, t, currentData.fallbackOutcome)
+    ? getAvailableActions(derivedRole, currentData.status, canFinalize, t, currentData.fallbackOutcome)
       .filter((action) => isMock || action.id !== "create")
     : [];
 
-  const handleActionClick = (actionId: string) => {
+  const handleActionClick = async (actionId: string) => {
     if (actionId === "create") {
       setIsCreateModalOpen(true);
+      return;
+    }
+
+    if (actionId === "dispute_pass" || actionId === "dispute_fail" || actionId.startsWith("resolve_")) {
+      document.getElementById("dispute-preparation")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    const method = actionId === "submit_evidence" || actionId === "submit_correction"
+      ? "submit_evidence" : actionId;
+    if (!contractId || !address) {
+      setActionError("Conecta tu wallet Freighter para firmar en Testnet.");
+      return;
+    }
+    if (method === "submit_evidence" && !/^(?:0x)?[0-9a-fA-F]{64}$/.test(evidenceHash.trim())) {
+      setActionError("Ingrese un hash hexadecimal de exactamente 32 bytes para la evidencia.");
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    setActionError(null);
+    setActionSuccessHash(null);
+    try {
+      const unsignedXdr = await buildContractCallTx({
+        contractId,
+        userAddress: address,
+        method,
+        args: method === "submit_evidence" ? [bytes32ToScVal(evidenceHash)] : [],
+      });
+      const signed = await signTransactionGuard(unsignedXdr);
+      if (!signed.success || !signed.signedXdr) {
+        setActionError(signed.error || "Firma rechazada en Freighter.");
+        return;
+      }
+      const submitted = await submitSorobanTransaction({ signedXdr: signed.signedXdr });
+      if (!submitted.success) {
+        setActionError(submitted.error || "No se pudo enviar la transacción a Soroban.");
+        return;
+      }
+      setActionSuccessHash(submitted.txHash || null);
+      await handleRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSubmittingAction(false);
     }
   };
 
@@ -126,7 +181,7 @@ export default function Home() {
       )}
 
       {availableActions.map((action) => {
-        const isInteractive = action.id === "create";
+        const isInteractive = isMock ? action.id === "create" : true;
         const actionLabel = action.labelKey ? t(action.labelKey) : action.label;
         const actionDesc = action.descKey ? t(action.descKey) : action.description;
 
@@ -134,8 +189,8 @@ export default function Home() {
           <button
             key={action.id}
             type="button"
-            disabled={!isInteractive}
-            onClick={() => handleActionClick(action.id)}
+            disabled={!isInteractive || isSubmittingAction}
+            onClick={() => void handleActionClick(action.id)}
             title={
               isInteractive
                 ? `${action.fullName} — ${actionDesc}`
@@ -153,11 +208,30 @@ export default function Home() {
           >
             <span>{actionLabel}</span>
             <span className="text-[10px] opacity-75 font-normal">
-              {isInteractive ? "✦" : `[${t("common.pending_onchain")}]`}
+              {isSubmittingAction && isInteractive ? "..." : isInteractive ? "✦" : `[${t("common.pending_onchain")}]`}
             </span>
           </button>
         );
       })}
+      {!isMock && availableActions.some((action) =>
+        action.id === "submit_evidence" || action.id === "submit_correction"
+      ) && (
+        <label className="flex items-center gap-2 text-xs font-mono text-neutral-700 dark:text-neutral-300">
+          <span>Hash evidencia</span>
+          <input
+            value={evidenceHash}
+            onChange={(event) => {
+              setEvidenceHash(event.target.value);
+              setActionError(null);
+            }}
+            placeholder="64 caracteres hex"
+            aria-label="Hash de evidencia de 32 bytes"
+            className="w-52 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950"
+          />
+        </label>
+      )}
+      {actionError && <p role="alert" className="w-full text-xs text-rose-700 dark:text-rose-300">{actionError}</p>}
+      {actionSuccessHash && <p role="status" className="w-full text-xs text-teal-700 dark:text-teal-300">Transacción enviada: {actionSuccessHash}</p>}
     </div>
   );
 
@@ -197,8 +271,16 @@ export default function Home() {
     </div>
   ) : (
     <div role="status" className={styles.onchainBanner}>
-      <strong className={styles.bannerBadge}>{t("alerts.onchain_data_badge")}</strong>
-      <span>{t("alerts.onchain_partial")}</span>
+      <strong className={styles.bannerBadge}>
+        {onChainSnapshot && !onChainSnapshot.error && currentData
+          ? t("alerts.onchain_complete_badge")
+          : t("alerts.onchain_data_badge")}
+      </strong>
+      <span>
+        {onChainSnapshot && !onChainSnapshot.error && currentData
+          ? t("alerts.onchain_complete")
+          : t("alerts.onchain_partial")}
+      </span>
       {rpcError && <span className={styles.onchainError}>{rpcError}</span>}
     </div>
   );

@@ -93,6 +93,25 @@ export function mapEscrowConfig(value: unknown): Record<string, unknown> | null 
   return config;
 }
 
+const REQUIRED_CONFIG_FIELDS = [
+  "amount", "attestationPeriod", "buyer", "correctionPeriod", "engine",
+  "fallbackOutcome", "fallbackSplitBps", "maxCorrectionAttempts", "objectionPeriod",
+  "resolutionPeriod", "resolver", "submissionPeriod", "supplier", "token",
+] as const;
+
+/** A complete snapshot must carry every EscrowConfig field, not merely a valid subset. */
+export function isCompleteEscrowConfig(config: Record<string, unknown> | null): boolean {
+  if (!config || !REQUIRED_CONFIG_FIELDS.every((field) => Object.hasOwn(config, field))) return false;
+  const isInteger = (value: unknown) => typeof value === "number" || typeof value === "bigint";
+  const isAddress = (value: unknown) => typeof value === "string" && value.length > 0;
+  return isInteger(config.amount) && isInteger(config.attestationPeriod) &&
+    isAddress(config.buyer) && isInteger(config.correctionPeriod) && isAddress(config.engine) &&
+    isFallbackOutcome(config.fallbackOutcome) && isInteger(config.fallbackSplitBps) &&
+    isInteger(config.maxCorrectionAttempts) && isInteger(config.objectionPeriod) &&
+    isInteger(config.resolutionPeriod) && isAddress(config.resolver) &&
+    isInteger(config.submissionPeriod) && isAddress(config.supplier) && isAddress(config.token);
+}
+
 /**
  * Reads EscrowConfig and EscrowState directly from chain via soroban RPC.
  * Uses `state()` and `config()` view functions of the ConditionalPayment contract.
@@ -181,6 +200,9 @@ export async function fetchOnChainSnapshot(
 
     const state = mapEscrowState(snap.state);
     const config = mapEscrowConfig(snap.config);
+    if (!state || !isCompleteEscrowConfig(config)) {
+      throw new Error("Incomplete snapshot returned by contract");
+    }
 
     const hashes: EscrowHashes = {};
     const reasonHash = parseBytes32(snap.dispute_reason_hash);
