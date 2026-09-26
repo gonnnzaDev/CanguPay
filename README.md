@@ -165,6 +165,25 @@ stellar contract invoke --id $ESCROW --source-account buyer --network $NETWORK \
 stellar contract invoke --id $ESCROW --source-account buyer --network $NETWORK -- fund
 ```
 
+#### Por qué el montaje usa el CLI y no un script propio
+
+Existió un `examples/testnet_setup.rs` en el agente que hacia el montaje por su cuenta.
+Se borró. Copiaba la lógica de firma en vez de delegar en la de producción, y arrastró
+los tres fallos que esta capa ya no tiene:
+
+- la pista de firma con el **prefijo** de la pubkey, que hace que la red responda
+  `TxBadAuth` aunque la firma verifique;
+- cero manejo de las credenciales `SourceAccount`, que aparecen cuando la cuenta que
+  exige `auth` es la propia fuente de la transacción;
+- el enum enviado por índice en vez de por nombre, que hace que el contrato entre en
+  `UnreachableCodeReached`.
+
+Compilaba sin errores, así que nadie lo habría detectado hasta usarlo. Mantener una
+segunda implementación de firma junto a la buena es una forma de reintroducir
+los fallos que la primera ya corrigió. Cuando se monte un escrow en testnet, se usa el
+CLI de Stellar, que además sirve de control: si una transacción entra por el CLI y no
+por el agente, el problema está en el agente y no en la red.
+
 ### Verificar en la red
 
 ```bash
