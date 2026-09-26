@@ -122,7 +122,7 @@ Mientras esos campos estén vacíos, no se afirma que la demo haya corrido on-ch
 
 ## Equipo
 
-**Gonza** ([@gonnnzaDev](https://github.com/gonnnzaDev)) — contrato y testnet · **Julián** ([@Julianv3534](https://github.com/Julianv3534)) — frontend e integración · **Linder** — producto, agente, evidencia y presentación · **ForLess01** — frontend/integración (pareja de Julián en P0-08)
+**Gonza** ([@gonnnzaDev](https://github.com/gonnnzaDev)) — contrato y testnet · **Julián** ([@Julianv3534](https://github.com/Julianv3534)) — frontend e integración · **Linder** — producto, agente, evidencia y presentación · **Rendo(ForLess01)** — frontend/integración (pareja de Julián en P0-08)
 
 Equipo de 4 en ambas competencias; elegibilidad registrada en D-008 de [`docs/decision-log.md`](docs/decision-log.md).
 
