@@ -143,7 +143,7 @@ const escrowStatuses: readonly string[] = [
   "DISPUTED", "CANCELLED", "RELEASED", "REFUNDED", "SPLIT",
 ];
 
-function isFallbackOutcome(value: unknown): value is FallbackOutcome {
+export function isFallbackOutcome(value: unknown): value is FallbackOutcome {
   return value === "RELEASE" || value === "REFUND" || value === "SPLIT";
 }
 
@@ -219,7 +219,9 @@ export function getAvailableActions(
   status: EscrowStatus,
   canFinalize: boolean = false,
   t?: (key: string, params?: Record<string, string | number>) => string,
-  fallbackOutcome?: FallbackOutcome | null
+  fallbackOutcome?: FallbackOutcome | null,
+  /** El plazo activo del estado ya vencio: lo unico que queda es finalizar. */
+  deadlineVencido: boolean = false
 ): EscrowAction[] {
   if (isTerminalStatus(status)) return [];
 
@@ -230,6 +232,16 @@ export function getAvailableActions(
   };
 
   const actions: EscrowAction[] = [];
+
+  // Con el plazo vencido, el contrato ya no acepta las acciones del estado: solo
+  // queda finalize(). Antes se ofrecian Aprobar y Disputar y el contrato las
+  // rechazaba con ObjectionDeadlinePassed.
+  if (deadlineVencido) {
+    if (canFinalize && status !== "CREATED" && (status !== "DISPUTED" || isFallbackOutcome(fallbackOutcome))) {
+      actions.push(...finalizeActionsFor(status, fallbackOutcome, tr));
+    }
+    return actions;
+  }
 
   if (role === "buyer") {
     if (status === "CREATED") {
@@ -357,38 +369,48 @@ export function getAvailableActions(
   // Finalize follows the documented timeout matrix, not the action actor.
   // In a dispute, an unknown fallback cannot be presented as a known payout.
   if (canFinalize && status !== "CREATED" && (status !== "DISPUTED" || isFallbackOutcome(fallbackOutcome))) {
-    let outcome: EscrowStatus = "REFUNDED";
-    switch (status) {
-      case "FUNDED":
-        outcome = "REFUNDED";
-        break;
-      case "EVIDENCE_SUBMITTED":
-        outcome = "REFUNDED";
-        break;
-      case "ATTESTED_PASS":
-        outcome = "RELEASED";
-        break;
-      case "ATTESTED_FAIL":
-        outcome = "REFUNDED";
-        break;
-      case "DISPUTED":
-        outcome = fallbackOutcome === "RELEASE" ? "RELEASED"
-          : fallbackOutcome === "REFUND" ? "REFUNDED" : "SPLIT";
-        break;
-      default:
-        outcome = "REFUNDED";
-    }
-    actions.push({
-      id: "finalize",
-      labelKey: "actions.finalize",
-      descKey: "actions.finalize_desc",
-      label: tr("actions.finalize", "Ejecutar Finalize"),
-      fullName: "Ejecución Vencimiento (Finalize)",
-      variant: "secondary",
-      expectedOutcome: outcome,
-      description: tr("actions.finalize_desc", "Acción permisionada por expiración del plazo contractual en ledger."),
-    });
+    actions.push(...finalizeActionsFor(status, fallbackOutcome, tr));
   }
 
   return actions;
+}
+
+/** La accion de finalizar, con el resultado que le toca a cada estado. */
+function finalizeActionsFor(
+  status: EscrowStatus,
+  fallbackOutcome: FallbackOutcome | null | undefined,
+  tr: (key: string, fallback: string) => string
+): EscrowAction[] {
+  let outcome: EscrowStatus = "REFUNDED";
+  switch (status) {
+    case "FUNDED":
+      outcome = "REFUNDED";
+      break;
+    case "EVIDENCE_SUBMITTED":
+      outcome = "REFUNDED";
+      break;
+    case "ATTESTED_PASS":
+      outcome = "RELEASED";
+      break;
+    case "ATTESTED_FAIL":
+      outcome = "REFUNDED";
+      break;
+    case "DISPUTED":
+      outcome = fallbackOutcome === "RELEASE" ? "RELEASED"
+        : fallbackOutcome === "REFUND" ? "REFUNDED" : "SPLIT";
+      break;
+    default:
+      outcome = "REFUNDED";
+  }
+
+  return [{
+    id: "finalize",
+    labelKey: "actions.finalize",
+    descKey: "actions.finalize_desc",
+    label: tr("actions.finalize", "Ejecutar Finalize"),
+    fullName: "Ejecución Vencimiento (Finalize)",
+    variant: "secondary",
+    expectedOutcome: outcome,
+    description: tr("actions.finalize_desc", "Acción permisionada por expiración del plazo contractual en ledger."),
+  }];
 }

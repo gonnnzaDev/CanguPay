@@ -212,6 +212,7 @@ export const es = {
   alerts: {
     unavailable: "No disponible",
     onchain_data_badge: "Lectura parcial del contrato",
+    deadline_missed: "El plazo vigente ya vencio: la unica operacion que acepta el contrato es finalizar.",
     onchain_partial: "Algunos datos no están disponibles y las acciones aún no están habilitadas.",
     onchain_complete_badge: "Contrato sincronizado",
     onchain_complete: "Lectura completa del estado, la configuración y los plazos vigentes del contrato.",

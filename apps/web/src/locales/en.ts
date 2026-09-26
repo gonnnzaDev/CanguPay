@@ -214,6 +214,7 @@ export const en: typeof es = {
   alerts: {
     unavailable: "Unavailable",
     onchain_data_badge: "Partial contract read",
+    deadline_missed: "The current deadline has passed: the only operation the contract accepts is finalizing.",
     onchain_partial: "Some details are unavailable and actions are not enabled yet.",
     onchain_complete_badge: "Contract synchronized",
     onchain_complete: "Complete read of the contract state, configuration, and active deadlines.",

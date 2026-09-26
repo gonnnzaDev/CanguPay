@@ -27,6 +27,7 @@ import {
 import { mockEscrows } from "@/dev/mockEscrow";
 import { fetchOnChainEscrow, fetchOnChainSnapshot, type EscrowSnapshotResult } from "@/lib/soroban";
 import { buildContractCallTx, bytes32ToScVal, submitSorobanTransaction } from "@/lib/dispute-tx";
+import { errorLegible, esPlazoVencido } from "@/lib/contract-errors";
 
 export default function Home() {
   const { t } = useLanguage();
@@ -54,6 +55,7 @@ export default function Home() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccessHash, setActionSuccessHash] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  const [isDeadlineMissed, setIsDeadlineMissed] = useState(false);
 
   const contractId = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ID || "";
 
@@ -115,9 +117,25 @@ export default function Home() {
     (onChainSnapshot?.ledgerTimestamp ?? 0) >= (currentData?.activeDeadline?.timestamp ?? Infinity);
   const canFinalize = canPreviewFinalize || canOnChainFinalize;
 
+  // El plazo vigente del estado ya paso: el contrato ya no acepta Aprobar ni
+  // Disputar, solo finalize(). Se calcula aparte para no depender de que
+  // canFinalize exista, y para no ofrecer acciones que van a ser rechazadas.
+  const deadlineVencido =
+    !isMock &&
+    currentData?.activeDeadline?.timestamp != null &&
+    onChainSnapshot?.ledgerTimestamp != null &&
+    onChainSnapshot.ledgerTimestamp >= currentData.activeDeadline.timestamp;
+
   const derivedRole = deriveWalletRole(address, currentData?.parties);
   const availableActions = currentData
-    ? getAvailableActions(derivedRole, currentData.status, canFinalize, t, currentData.fallbackOutcome)
+    ? getAvailableActions(
+        derivedRole,
+        currentData.status,
+        canFinalize,
+        t,
+        currentData.fallbackOutcome,
+        Boolean(deadlineVencido),
+      )
       .filter((action) => isMock || action.id !== "create")
     : [];
 
@@ -160,13 +178,16 @@ export default function Home() {
       }
       const submitted = await submitSorobanTransaction({ signedXdr: signed.signedXdr });
       if (!submitted.success) {
-        setActionError(submitted.error || "No se pudo enviar la transacción a Soroban.");
+        setActionError(errorLegible(submitted.error));
         return;
       }
       setActionSuccessHash(submitted.txHash || null);
       await handleRefresh();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      // Un rechazo del contrato no debe volcar la traza del evento diagnostico
+      // en pantalla; se traduce y el crudo se queda en la consola.
+      setActionError(errorLegible(error));
+      if (esPlazoVencido(error)) setIsDeadlineMissed(true);
     } finally {
       setIsSubmittingAction(false);
     }
@@ -231,6 +252,11 @@ export default function Home() {
         </label>
       )}
       {actionError && <p role="alert" className="w-full text-xs text-rose-700 dark:text-rose-300">{actionError}</p>}
+      {isDeadlineMissed && !actionError && (
+        <p role="status" className="w-full text-xs text-amber-700 dark:text-amber-300">
+          {t("alerts.deadline_missed")}
+        </p>
+      )}
       {actionSuccessHash && <p role="status" className="w-full text-xs text-teal-700 dark:text-teal-300">Transacción enviada: {actionSuccessHash}</p>}
     </div>
   );

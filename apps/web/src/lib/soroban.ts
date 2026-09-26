@@ -6,7 +6,11 @@ import type {
   EscrowHashes,
   EscrowStatus,
   FallbackOutcome,
-} from "../types/escrow";
+} from "../types/escrow.ts";
+// Con extension a proposito: sin ella el test de este modulo no carga, porque
+// el resolutor ESM de node no prueba extensiones y el tsconfig del app esta en
+// moduleResolution "bundler".
+import { isFallbackOutcome } from "../types/escrow.ts";
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
 const CONTRACT_ID = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ID || "";
