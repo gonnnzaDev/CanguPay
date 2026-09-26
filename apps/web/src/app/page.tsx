@@ -13,6 +13,8 @@ import { WalletConnection } from "@/components/wallet/WalletConnection";
 import { useWallet } from "@/providers/WalletProvider";
 import { useLanguage } from "@/providers/LanguageProvider";
 import { EscrowDetails } from "@/components/escrow/EscrowDetails";
+import { DisputePreparation } from "@/components/escrow/DisputePreparation";
+import { EscrowEventTimeline } from "@/components/escrow/EscrowEventTimeline";
 import styles from "@/components/escrow/EscrowVisuals.module.css";
 import { CreateEscrowModal } from "@/components/escrow/CreateEscrowModal";
 import {
@@ -23,7 +25,7 @@ import {
 } from "@/types/escrow";
 
 import { mockEscrows } from "@/dev/mockEscrow";
-import { fetchOnChainEscrow } from "@/lib/soroban";
+import { fetchOnChainEscrow, fetchOnChainSnapshot, type EscrowSnapshotResult } from "@/lib/soroban";
 
 export default function Home() {
   const { t } = useLanguage();
@@ -35,6 +37,7 @@ export default function Home() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [onChainState, setOnChainState] = useState<string | null>(null);
   const [onChainConfig, setOnChainConfig] = useState<Record<string, unknown> | null>(null);
+  const [onChainSnapshot, setOnChainSnapshot] = useState<EscrowSnapshotResult | null>(null);
   const [rpcError, setRpcError] = useState<string | null>(null);
 
   const {
@@ -54,6 +57,7 @@ export default function Home() {
     setRpcError(null);
     setOnChainState(null);
     setOnChainConfig(null);
+    setOnChainSnapshot(null);
     if (contractId) {
       try {
         const res = await fetchOnChainEscrow(contractId);
@@ -63,6 +67,12 @@ export default function Home() {
         } else {
           setOnChainState(res.state);
           setOnChainConfig(res.config as Record<string, unknown> | null);
+          try {
+            const snap = await fetchOnChainSnapshot(contractId);
+            if (!snap.error) {
+              setOnChainSnapshot(snap);
+            }
+          } catch {}
         }
       } catch (e) {
         setRpcError(e instanceof Error ? e.message : String(e));
@@ -90,7 +100,7 @@ export default function Home() {
   const isMock = !contractId;
   const currentData = isMock
     ? mockEscrows[activeScenario]
-    : mapOnChainEscrow(onChainState, onChainConfig, contractId);
+    : mapOnChainEscrow(onChainState, onChainConfig, contractId, onChainSnapshot);
   // A preview timeout is explicit and only applies to a known, eligible deadline.
   const canPreviewFinalize = isMock && isSimulatingExpired && Boolean(address) &&
     Boolean(currentData?.activeDeadline?.timestamp) && currentData?.status !== "CREATED";
@@ -279,6 +289,18 @@ export default function Home() {
             onRefresh={handleRefresh}
             actionSlot={actionSlot}
             bannerSlot={bannerSlot}
+            preparationSlot={currentData && derivedRole && (
+              <DisputePreparation
+                key={`${currentData.operationId}:${derivedRole}:${currentData.status}`}
+                role={derivedRole}
+                status={currentData.status}
+                contractId={contractId || undefined}
+                onSuccess={handleRefresh}
+              />
+            )}
+            eventTimelineSlot={!isMock && currentData && onChainConfig && (
+              <EscrowEventTimeline key={contractId} contractId={contractId} config={onChainConfig} />
+            )}
             viewerRole={derivedRole}
             canFinalize={canPreviewFinalize}
             onCreateEscrow={isMock ? () => setIsCreateModalOpen(true) : undefined}

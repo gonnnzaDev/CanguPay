@@ -229,6 +229,8 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
   onRefresh,
   actionSlot,
   bannerSlot,
+  preparationSlot,
+  eventTimelineSlot,
   viewerRole,
   canFinalize = false,
   onCreateEscrow,
@@ -565,6 +567,10 @@ export const EscrowDetails: React.FC<EscrowDetailsProps> = ({
       {viewerRole === "observer" && (
         <ObserverPanel />
       )}
+
+      {preparationSlot}
+
+      {eventTimelineSlot}
 
       {/* Current turn */}
       <div>

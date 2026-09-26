@@ -150,11 +150,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setIsConnected(false);
         }
       } else {
+        setAddress(null);
+        setIsConnected(false);
         setNetwork("UNKNOWN");
         setNetworkPassphrase(null);
       }
     } catch {
       setIsFreighterInstalled(false);
+      setAddress(null);
+      setIsConnected(false);
       setNetwork("UNKNOWN");
       setNetworkPassphrase(null);
     }
