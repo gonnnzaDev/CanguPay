@@ -27,6 +27,34 @@ const WalletContext = createContext<WalletState | undefined>(undefined);
 
 const STORAGE_KEY_WALLET_CONNECTED = "cangupay_freighter_connected";
 
+type FreighterNetworkDetails = {
+  network?: unknown;
+  networkPassphrase?: unknown;
+  networkDetails?: unknown;
+};
+
+/** Freighter 6's runtime wraps this result in `networkDetails`, despite its declarations. */
+export function normalizeFreighterNetworkDetails(value: unknown): {
+  network: WalletNetwork;
+  passphrase: string | null;
+} | null {
+  if (!value || typeof value !== "object") return null;
+  const result = value as FreighterNetworkDetails;
+  const details = result.networkDetails && typeof result.networkDetails === "object"
+    ? result.networkDetails as FreighterNetworkDetails
+    : result;
+  const rawNet = typeof details.network === "string" ? details.network.toUpperCase() : "";
+  const passphrase = typeof details.networkPassphrase === "string" ? details.networkPassphrase : null;
+
+  let network: WalletNetwork = "UNKNOWN";
+  if (rawNet.includes("PUBLIC") || rawNet.includes("MAIN")) network = "PUBLIC";
+  else if (rawNet.includes("FUTURE")) network = "FUTURENET";
+  else if (rawNet.includes("STANDALONE")) network = "STANDALONE";
+  else if (rawNet.includes("TESTNET") || rawNet.includes("TEST")) network = "TESTNET";
+
+  return { network, passphrase };
+}
+
 /**
  * Fail-closed network and passphrase detection.
  * Never defaults to TESTNET in catch blocks.
@@ -37,26 +65,8 @@ async function queryFreighterNetwork(): Promise<{
 }> {
   try {
     const netDetails = await getNetworkDetails();
-    if (netDetails && typeof netDetails === "object") {
-      const rawNet = (netDetails.network || "").toUpperCase();
-      const rawPassphrase = netDetails.networkPassphrase || null;
-
-      let netType: WalletNetwork = "UNKNOWN";
-      if (rawNet.includes("PUBLIC") || rawNet.includes("MAIN")) {
-        netType = "PUBLIC";
-      } else if (rawNet.includes("FUTURE")) {
-        netType = "FUTURENET";
-      } else if (rawNet.includes("STANDALONE")) {
-        netType = "STANDALONE";
-      } else if (rawNet.includes("TESTNET") || rawNet.includes("TEST")) {
-        netType = "TESTNET";
-      }
-
-      return {
-        network: netType,
-        passphrase: rawPassphrase,
-      };
-    }
+    const details = normalizeFreighterNetworkDetails(netDetails);
+    if (details) return details;
   } catch {
     // Fail-closed: do not assume or fallback to TESTNET
   }

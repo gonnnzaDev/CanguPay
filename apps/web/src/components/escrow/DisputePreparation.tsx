@@ -126,6 +126,7 @@ export function DisputePreparation({
 
   return (
     <section
+      id="dispute-preparation"
       aria-labelledby="dispute-preparation-title"
       className="rounded-xl border border-neutral-200 bg-white p-5 text-neutral-900 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-100"
     >

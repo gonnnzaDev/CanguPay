@@ -16,6 +16,38 @@ function hexToBytes(hex: string): Buffer {
   return Buffer.from(clean, "hex");
 }
 
+export function bytes32ToScVal(hex: string): StellarSdk.xdr.ScVal {
+  return StellarSdk.xdr.ScVal.scvBytes(hexToBytes(hex));
+}
+
+export async function buildContractCallTx({
+  contractId,
+  userAddress,
+  method,
+  args = [],
+  rpcUrl = DEFAULT_RPC_URL,
+  networkPassphrase = TESTNET_PASSPHRASE,
+}: {
+  contractId: string;
+  userAddress: string;
+  method: string;
+  args?: StellarSdk.xdr.ScVal[];
+  rpcUrl?: string;
+  networkPassphrase?: string;
+}): Promise<string> {
+  const srv = new StellarSdk.rpc.Server(rpcUrl);
+  const account = await srv.getAccount(userAddress);
+  const tx = new StellarSdk.TransactionBuilder(account, {
+    fee: "1000",
+    networkPassphrase,
+  })
+    .addOperation(new StellarSdk.Contract(contractId).call(method, ...args))
+    .setTimeout(60)
+    .build();
+
+  return (await srv.prepareTransaction(tx)).toXDR();
+}
+
 function outcomeToScVal(outcome: FallbackOutcome): StellarSdk.xdr.ScVal {
   // Soroban enum variants are serialized as ScVal.scvVec([ScVal.scvSymbol(VariantName)])
   const name =
@@ -38,29 +70,14 @@ export async function buildRaiseDisputeTx({
   rpcUrl?: string;
   networkPassphrase?: string;
 }): Promise<string> {
-  const srv = new StellarSdk.rpc.Server(rpcUrl);
-  const account = await srv.getAccount(userAddress);
-  const contract = new StellarSdk.Contract(contractId);
-
-  const reasonBytes = hexToBytes(reasonHash);
-  const evidenceBytes = hexToBytes(disputeEvidenceHash);
-
-  const op = contract.call(
-    "raise_dispute",
-    StellarSdk.xdr.ScVal.scvBytes(reasonBytes),
-    StellarSdk.xdr.ScVal.scvBytes(evidenceBytes)
-  );
-
-  const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: "1000",
+  return buildContractCallTx({
+    contractId,
+    userAddress,
+    method: "raise_dispute",
+    args: [bytes32ToScVal(reasonHash), bytes32ToScVal(disputeEvidenceHash)],
+    rpcUrl,
     networkPassphrase,
-  })
-    .addOperation(op)
-    .setTimeout(60)
-    .build();
-
-  const prepared = await srv.prepareTransaction(tx);
-  return prepared.toXDR();
+  });
 }
 
 export async function buildResolveTx({
@@ -78,25 +95,16 @@ export async function buildResolveTx({
   rpcUrl?: string;
   networkPassphrase?: string;
 }): Promise<string> {
-  const srv = new StellarSdk.rpc.Server(rpcUrl);
-  const account = await srv.getAccount(userAddress);
-  const contract = new StellarSdk.Contract(contractId);
-
   const outcomeVal = outcomeToScVal(outcome);
   const splitBpsVal = StellarSdk.xdr.ScVal.scvU32(outcome === "SPLIT" ? splitBps : 0);
-
-  const op = contract.call("resolve", outcomeVal, splitBpsVal);
-
-  const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: "1000",
+  return buildContractCallTx({
+    contractId,
+    userAddress,
+    method: "resolve",
+    args: [outcomeVal, splitBpsVal],
+    rpcUrl,
     networkPassphrase,
-  })
-    .addOperation(op)
-    .setTimeout(60)
-    .build();
-
-  const prepared = await srv.prepareTransaction(tx);
-  return prepared.toXDR();
+  });
 }
 
 export async function submitSorobanTransaction({

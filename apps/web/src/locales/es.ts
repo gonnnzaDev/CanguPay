@@ -213,6 +213,8 @@ export const es = {
     unavailable: "No disponible",
     onchain_data_badge: "Lectura parcial del contrato",
     onchain_partial: "Algunos datos no están disponibles y las acciones aún no están habilitadas.",
+    onchain_complete_badge: "Contrato sincronizado",
+    onchain_complete: "Lectura completa del estado, la configuración y los plazos vigentes del contrato.",
     onchain_unavailable_title: "Estado del contrato no disponible",
     onchain_unavailable_desc: "El contrato configurado no devolvió un estado reconocido. Actualice para reintentar; no se sustituyen valores de vista previa.",
     mock_only: "Importes, direcciones y plazos de ejemplo; no representan fondos reales ni permiten probar los tres roles con wallets reales.",
@@ -387,5 +389,4 @@ export const es = {
     },
   },
 };
-
 
