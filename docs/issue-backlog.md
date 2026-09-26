@@ -267,11 +267,13 @@ stroop con los valores que fijan los tests de reparto.
 
 **Terminado cuando:**
 
-- [ ] README distingue código nuevo, antecedentes, activo testnet y limitaciones.
-- [ ] P0/P1 y fuente de verdad están enlazados.
-- [ ] Se declaran solo resultados de validación efectivamente obtenidos.
-- [ ] Demo, testnet, explorer, equipo y pasos de reproducción son verificables.
-- [ ] El guion evita llamar RWA, factoring o USDC al activo de prueba.
+- [x] README distingue código nuevo, antecedentes, activo testnet y limitaciones.
+- [x] P0/P1 y fuente de verdad están enlazados.
+- [x] Se declaran solo resultados de validación efectivamente obtenidos.
+- [ ] Demo, testnet, explorer, equipo y pasos de reproducción son verificables. *(equipo y `python3 scripts/verify_fixtures.py` verificados; contract ID, tx hashes, explorer y video quedan reservados en el README hasta P0-11; `docs/demo-scenarios.md` sigue vacío)*
+- [x] El guion evita llamar RWA, factoring o USDC al activo de prueba.
+
+**Entregados el 25-09-2026:** `LICENSE` (MIT, D-010), `docs/pitch-script.md`, `docs/validation-log.md` (tres mensajes constan como no enviados), chequeo de marca/dominio en D-006, sección "Fuente de verdad" y bloque "Demo, testnet y video" en el README (D-011).
 
 ## Mapeo publicado (19-09-2026)
 Fuente: https://github.com/gonnnzaDev/CanguPay/issues · Registro de decisión: D-005 en `docs/decision-log.md`.
