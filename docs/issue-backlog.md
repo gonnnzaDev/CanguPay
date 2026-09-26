@@ -148,10 +148,10 @@ Del flujo FAIL: `initialize` `5e393519310da89dcd2e4f5d80c075e6cda39ed220bd8e637f
 
 **Terminado cuando:**
 
-- [ ] Pasa el flujo feliz, ghost supplier, ghost engine, corrección, disputa, fallback, split, idempotencia y conservación de saldos.
-- [ ] El README contiene comandos reales de build/test/deploy, contract IDs y tx hashes públicos.
-- [ ] No hay claves ni documentos reales en repo o logs.
-- [ ] Julián recibe ABI/bindings y ejemplos de lectura/invocación.
+- [x] Pasa el flujo feliz, ghost supplier, ghost engine, corrección, disputa, fallback, split, idempotencia y conservación de saldos. Los nueve flujos ejecutados en `soroban-testnet.stellar.org` con SDK 28, no solo en pruebas locales. Los tres que faltaban: ghost supplier con `Finalized(reason: 1)`, ghost engine con `Finalized(reason: 2)` ambos reembolsa[n]do al buyer y dejando al supplier en cero, e idempotencia con el segundo `finalize()` sin pagar dos veces y el saldo del buyer exactamente en el monto del escrow. Los nueve contract IDs del README se verificaron uno por uno leyendo su estado en la red.
+- [x] El README contiene comandos reales de build/test/deploy, contract IDs y tx hashes públicos. El README raíz ya no remite a P0-00: lleva requisitos, build, test y deploy reales, los nueve contract IDs y los tx hashes del agente con enlace al explorer, y el aviso de que desde `soroban-sdk` 28 el WASM exige `stellar contract build`.
+- [x] No hay claves ni documentos reales en repo o logs. Cero claves en el historial de commits; las claves de las cinco y diez cuentas de prueba se generaron por corrida y se borraron del disco. Los hex que aparecen en el repo son el vector público de RFC 8032, hashes de `fixtures/manifest.json` y datos de mock en `apps/web/src/dev/mockEscrow.ts`.
+- [ ] Julián recibe ABI/bindings y ejemplos de lectura/invocación. **Parcial:** el ABI ya esta commiteado en `contracts/conditional-payment/abi/conditional_payment.json`, generado desde el WASM con `stellar contract info interface`, y los ejemplos estan en `docs/integration-examples.md` (leer con `snapshot()`, rol que firma cada operacion, y las tres convenciones de Soroban que hacen fallar la invocacion). **Falta:** los bindings de TypeScript, que no existen.
 
 ### P0-06 — Producir fixtures sintéticos y reglas de negocio
 
