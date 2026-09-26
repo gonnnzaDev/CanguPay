@@ -1,7 +1,29 @@
 [package]
 name = "attestation-agent"
-version = "0.1.0"
-edition = "2021"
+description = "CanguPay · motor determinista de reglas y agente de atestación on-chain (P0-07)"
+version.workspace = true
+edition.workspace = true
+publish = false
 
-# Servicio de agente de attestation
-# Manejo de requests y responses de attestation para CanguPay
+[[bin]]
+name = "cangu-attest"
+path = "src/bin/cangu_attest.rs"
+
+[lib]
+name = "attestation_agent"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+stellar-xdr.workspace = true
+stellar-rpc-client.workspace = true
+stellar-strkey.workspace = true
+ed25519-dalek.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["rt", "time"] }
+
+[dev-dependencies]
+serde_json.workspace = true

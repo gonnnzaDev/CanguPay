@@ -1,0 +1,16 @@
+[package]
+name = "test-token"
+description = "CanguPay · token de prueba con la interfaz de Stellar Asset Contract (solo testnet)"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk.workspace = true
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

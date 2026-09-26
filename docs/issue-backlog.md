@@ -106,14 +106,39 @@
 
 **Terminado cuando:**
 
-- [x] Corrección incrementa attempts a 1, registra nuevo hash y reinicia `attestation_period`.
-- [x] Una segunda corrección es rechazada, con opción de disputar un nuevo FAIL vigente.
-- [x] Disputa exige hashes de motivo/evidencia y solo nace desde ATTESTED_PASS/FAIL dentro del plazo.
-- [x] Resolver puede decidir release/refund/split antes del deadline.
-- [x] En `DISPUTED`, `finalize()` aplica `fallback_outcome`/`fallback_split_bps` al vencer `resolution_period`.
-- [x] `split_bps>10000` y extremos para outcome SPLIT son rechazados; se conserva monto.
-- [x] `DisputeRaised`, `Resolved` y `Finalized(reason)` tienen datos correctos.
-- [x] Disputa o resolución post-terminal y doble settlement son rechazados.
+- [x] Corrección incrementa attempts a 1, registra nuevo hash y reinicia `attestation_period`. En testnet: `EvidenceSubmitted(attempt: 1, evidence_bundle_hash: 4f2e8d65…)` sobre `CDKAJTH2…`.
+- [x] Una segunda corrección es rechazada, con opción de disputar un nuevo FAIL vigente. En testnet: la segunda `submit_evidence` devuelve `Error(Contract, #5)` y la disputa posterior sí se acepta.
+- [x] Disputa exige hashes de motivo/evidencia y solo nace desde ATTESTED_PASS/FAIL dentro del plazo. En testnet: `DisputeRaised(by: GDWTZTTY…)` con ambos hashes; `finalize()` antes del plazo se rechaza.
+- [x] Resolver puede decidir release/refund/split antes del deadline. En testnet: `Resolved(by: GB35UO2B…, outcome: 3, split_bps: 5000)`.
+- [x] En `DISPUTED`, `finalize()` aplica `fallback_outcome`/`fallback_split_bps` al vencer `resolution_period`. En testnet sobre `CBZ3UQD6…` con `resolution_period=120`: antes del plazo rechaza, al vencer emite `Finalized(reason: 5)`.
+- [x] `split_bps>10000` y extremos para outcome SPLIT son rechazados; se conserva monto. En testnet: `resolve(outcome=3, bps=0)` y `bps=10001` se rechazan; a 3333 bps el reparto fue 3 333 000 000 / 6 667 000 000, exactamente el valor esperado, y la suma se conserva al stroop.
+- [x] `DisputeRaised`, `Resolved` y `Finalized(reason)` tienen datos correctos. Comparación de struct completo en los tests y lectura de los tres eventos en testnet.
+- [x] Disputa o resolución post-terminal y doble settlement son rechazados. En testnet sobre el escrow en `RELEASED`: `raise_dispute`, `resolve`, segundo `approve` y `attest` fallan los cuatro.
+
+#### Verificación en testnet
+
+Ejecutado contra `soroban-testnet.stellar.org` con `stellar` CLI v28.0.0 (protocolo 28). Los secretos de las cinco cuentas de prueba se generaron para esta corrida y **no** están en el repositorio; el token es un contrato de prueba, no CPUSD.
+
+| Contrato | Qué ejercita | ID |
+| --- | --- | --- |
+| Escrow PASS | release completo: initialize → fund → submit_evidence → attest(Pass) → approve | `CAVLH35BXYEMBIF6WAPVEMWZQJ2MLEH6HB5SQE4IX77ABMBUOOUS4MRH` |
+| Escrow FAIL | corrección única, disputa y `resolve` con split | `CDKAJTH2X4FLEQYAOHC7HU23LIDNVLXV6CGM3TQY2VCWEWM5ZQHJFWDC` |
+| Escrow fallback | `finalize()` vencido con fallback split 3333 | `CBZ3UQD6FFL623MSWUGCE6JSP3IIKDZVK5O7O5IO4D3DWWJBTVWCR7UZ` |
+| Token de prueba | `transfer`/`balance` para el fondeo | `CCKJK7K436EY5HVGVPCTV6YCJ26W4D4CYLMCPRE4QZ47VUPP5UT4JQDZ` |
+
+Transacciones del flujo PASS, en orden:
+
+| Paso | tx hash |
+| --- | --- |
+| Subir WASM | `954ef7a6a5a12d507d8b2f5063f9d0dac385c6522aeb5cc8a538321076d8d89a` |
+| Crear contrato | `cd39ac3eea8438efba3c07381d0e06c72b24cf549f46ffb9f8223cdf1c40e0b7` |
+| `initialize` | `57d5d14a25a5cb779fa1e8a5c5ce0dec02c9970bdbdbd9c7461cee170c2965ea` |
+| `fund` | `c18dea5142003778ac4bd3aafda31bebd5cf965117fbd9159d22b285ef447323` |
+| `submit_evidence` | `7c373a3355d2cd1cbaef5035fee4609fe7bbf996b9bf6f6243ca56550d9a991f` |
+| `attest(Pass)` | `8e3f4096820422b02f482f017c854673fba4b9ccf47293e449a73e4273793ab7` |
+| `approve` | `a093edc784f45bc76c128e17c8c1e31c223db2f59ef0e72ee2744557562236c4` |
+
+Del flujo FAIL: `initialize` `5e393519310da89dcd2e4f5d80c075e6cda39ed220bd8e637f079cf097335445`. Los hashes intermedios de `attest`/`submit_evidence`/`raise_dispute`/`resolve` de ese contrato no quedaron registrados en el log de la corrida; se localizan por el contrato y los eventos emitidos.
 
 ### P0-05 — Ejecutar pruebas críticas y desplegar el contrato
 
@@ -150,11 +175,37 @@
 
 **Terminado cuando:**
 
-- [ ] El mismo bundle produce el mismo reporte/hash.
-- [ ] El hash del bundle presentado coincide con el procesado por el engine.
-- [ ] Un FAIL señala qué campo falló sin inventar datos.
-- [ ] La clave del engine vive fuera del repo y no llega al frontend.
-- [ ] Una invocación exitosa en testnet produce `Attested` y cambia el estado esperado.
+- [x] El mismo bundle produce el mismo reporte/hash. `cargo test -p attestation-agent`: paridad con `fixtures/manifest.json` y con el motor Python en bundles externos al manifiesto.
+- [x] El hash del bundle presentado coincide con el procesado por el engine. El keeper y `attest` rechazan la firma si el hash local difiere del que está en cadena.
+- [x] Un FAIL señala qué campo falló sin inventar datos. `failed_fields` con ruta, estado, valor observado y esperado solo si existe en los datos.
+- [x] La clave del engine vive fuera del repo y no llega al frontend. `CANGUPA_ENGINE_SECRET`/`CANGUPA_ENGINE_KEYFILE`, con rechazo explícito de rutas dentro del repo.
+- [x] Una invocación exitosa en testnet produce `Attested` y cambia el estado esperado. En testnet con el propio agente: PASS en `CCGZQCVPZPJLTTD4NSCL7MZWFH6PKFAAZCSGXCPZH7ZEB7T56L2WJ2OF` (tx `f7168ae3e3c0f4e7cf59bc66353f7d9f3e24510043144dcf4864b2f003e1976f`) y FAIL en `CCQ7XTWYMGKMTBPJ5UIJ764GDQX7ZE2HYSZ3EPW4XUELSC7755SPNJ7A` (tx `bb714f80fe2acc5f6b8192fd5ec106a90c3fada9f4102767a72619a12c9f872d`). En ambos el `report_hash` leido de la cadena coincide con el que el motor calculo y firmo.
+
+Llegar ahi exigio corregir cuatro cosas que solo se manifiestan contra la red, no en pruebas:
+
+1. El enum `AttestationOutcome` se manda como `Vec([Symbol(nombre)])`. Mandarlo como `U32` con el indice parece correcto y el contrato hace `UnreachableCodeReached`.
+2. El `SignatureHint` son los **ultimos** 4 bytes de la pubkey. Con el prefijo, la red busca una clave que no existe y responde `TxBadAuth` aunque la firma verifique.
+3. Los `struct` vuelven como `Map` por nombre y los enums como `Vec[Symbol]`. El decodificador los leia posicionalmente.
+4. Los errores de `simulateTransaction` llegan en un campo `error` con HTTP 200; sin mirarlo, el sintoma era "no devolvio resultados".
+
+Ademas, el toolchain completo paso a protocolo 28: `soroban-sdk 28`, `stellar-xdr 28` y
+`stellar-rpc-client 28`. Con SDK 27 el contrato funcionaba en un nodo de protocolo 28,
+pero es una mezcla fragil; ahora contrato, RPC y XDR son de la misma version. El WASM
+baja de 43 KB a 21 KB y **exige** `stellar contract build`: `cargo build --target
+wasm32v1-none` ya no basta y falla con un error explicito.
+
+Con el toolchain unificado se verificaron en testnet los cuatro caminos del agente:
+
+| Camino | Contrato | Resultado |
+| --- | --- | --- |
+| `attest` PASS | `CCGZQCVPZPJLTTD4NSCL7MZWFH6PKFAAZCSGXCPZH7ZEB7T56L2WJ2OF` | tx `f7168ae3e3c0f4e7cf59bc66353f7d9f3e24510043144dcf4864b2f003e1976f` |
+| `attest` FAIL | `CCQ7XTWYMGKMTBPJ5UIJ764GDQX7ZE2HYSZ3EPW4XUELSC7755SPNJ7A` | tx `bb714f80fe2acc5f6b8192fd5ec106a90c3fada9f4102767a72619a12c9f872d` |
+| `keeper` atesta solo | `CDUEGOAJXOG5VD6M4I7SMVEV2S6MNAQKBPOWUY5UZQ7AJIN6U7Q4OHEU` | tx `abc981745d898e23190a8e46758508b1b5bd438fff38b1a8f77ac45613623e52` |
+| `finalize` con fallback split 3333 | `CB6SQ2N2IWDS36HVDF7CXB2RPVJVJLCYEKERR5EOCEEJR656F7TH4OJY` | `Split` con reparto 3 333 000 000 / 6 667 000 000 |
+| `keeper --finalize` liquida solo | `CD4GXNR7F5MSFZGJ6SMMNRXTICTUYRRM2UV5UNDKXZXDW3ORKR275YXD` | `Refunded` por fallback |
+
+Los cinco con contratos compilados con SDK 28. El reparto del fallback coincide al
+stroop con los valores que fijan los tests de reparto.
 
 ### P0-08 — Inicializar web, red y wallet
 
