@@ -115,6 +115,150 @@ Decisión:
 - `docs/pitch-script.md`: guion de 90 s, 3 min, video y lista de lenguaje prohibido (USDC, RWA, factoring).
 Pendiente para cerrar P0-12: enlaces de demo/testnet/explorer/video (depende de P0-11) y `docs/demo-scenarios.md`.
 
+## D-012 · Cierre de D-003: stack effective del proyecto — 26-09-2026
+Estado: **propuesto para ratificación de P0-00** (Gonza, Julián y Linder). Registra lo que
+el repositorio ya hace, que es la parte que faltaba documentar.
+
+D-003 quedó abierto porque la lectura on-chain y la ABI no estaban decided. Ya están, y la
+implementación las fijó. Lo que sigue es la firma, no el diseño.
+
+**Confirmado por el código:**
+
+1. **Contrato:** Rust con `soroban-sdk`. Funciones `initialize`, `fund`, `submit_evidence`,
+   `attest`, `approve`, `raise_dispute`, `resolve`, `finalize`, `cancel` y las vistas
+   `state`, `config` y `snapshot`.
+2. **Agente de atestación:** Rust, dentro del workspace, como crate `attestation-agent`. La
+   alternativa FastAPI/Python quedó **descartada**: obligaría a mantener el motor de reglas
+   en dos lenguajes y a reimplementar la firma y la serialización XDR.
+3. **Motor de reglas en Python:** se conserva `services/attestation-agent/app/` como
+   **oráculo ejecutable**, no como servicio. La paridad entre ambos está probada con tests
+   contra bundles externos al manifiesto, no solo contra `fixtures/manifest.json`.
+4. **Web:** Next.js/TypeScript en `apps/web`, con Freighter. Ya implementada y con
+   typecheck y tests en verde.
+
+**Mecanismo de lectura (lo que D-007 dejaba pendiente):** Stellar RPC, no Horizon. Se
+resuelve con `getLedgerEntries` para la escritura de la instancia y `simulateTransaction`
+para las vistas.
+
+**ABI de lectura:** un unico getter, `snapshot()`, que no pide `auth` y devuelve estado,
+configuración, hashes y **todos** los plazos en una llamada. Se añadió porque `state()` y
+`config()` no exponen deadlines ni hashes, y leerlos del almacenamiento por posicion
+obliga al cliente a conocer el orden de los campos privados del contrato. Ver D-013.
+
+Ratificación pendiente: quién firma esto y qué implica para D-003 y D-004.
+
+## D-013 · Convenciones de serializacion que la red exige — 26-09-2026
+Estado: **hecho y verificado en testnet.** Se documenta porque ninguna aparece en la
+especificacion de forma utilizable y las tres fallan de forma poco descriptiva.
+
+El agente fallo contra la red de cuatro maneras que ninguna prueba unitaria detecta,
+porque todas pasan en local:
+
+1. **Los `struct` se envian y devuelven como `Map` con claves por nombre**, no como un
+   `Vec` posicional. Con el `Vec` posicional el decoder lee shifting y produce una lectura
+   equivocada en silencio. Es tambien la forma correcta: reordenar el contrato no invalida
+   al cliente.
+2. **Los `enum` viajan como `Vec([Symbol("Nombre")])`**, no como el indice numerico. Pasar el
+   indice parece correcto —el enum tiene ese discriminante— pero el host no lo convierte y el
+   WASM entra en `UnreachableCodeReached`, un trap sin mensaje util.
+3. **El `SignatureHint` son los ultimos 4 bytes de la pubkey.** Con el prefijo, que es lo
+   que decia la especificacion antigua, la red busca una clave que no existe y responde
+   `TxBadAuth` aunque la firma verifique perfectamente. Es el fallo mas caro de la lista
+   porque el error no distingue "firma mala" de "no encuentro la clave".
+4. **Los errores de `simulateTransaction` llegan en un campo `error` con HTTP 200**, sin
+   `sorobanData`. Sin comprobarlo, el sintoma es "no devolvio resultados", que no dice
+   nada; ese enmascaramiento costo una hora de diagnostico.
+
+Ademas, cuando la cuenta que exige `auth` es la propia fuente de la transaccion, Soroban
+devuelve credenciales `SourceAccount` y no `Address`. Buscar solo `Address` hace pensar
+que la simulacion no devolvio nada.
+
+**Consecuencia sobre el mecanismo de lectura:** el RPC sirve la entrada de cuenta con una
+secuencia anterior a la que espera la red, por lo que el envio se rechaza con `TxBadSeq`
+aunque la firma sea correcta. El agente relee la cuenta y reintenta una vez, conservando el
+error de la red si tambien asi falla.
+
+## D-014 · Toolchain unificado en protocolo 28 — 26-09-2026
+Estado: **hecho.** `soroban-sdk`, `stellar-xdr` y `stellar-rpc-client` suben a 28.
+
+El nodo de testnet corre protocolo 28. Con las herramientas en 27 el contrato funcionaba
+contra el, pero es una mezcla fragil. Ahora las tres piezas son de la misma version.
+
+**Consecuencia operativa:** desde `soroban-sdk` 28 el WASM **no** se compila con
+`cargo build --target wasm32v1-none`; falla con un error explicito. Hay que usar
+`stellar contract build` (CLI 25.2+). Esto afecta al pipeline de **todos** los contratos
+del repo, no solo al agente.
+
+**Validación cruzada:** con el CLI se despliega y se ejecuta el flujo completo; con el
+agente, tambien. Que el mismo camino funcione por ambas vias es lo que permitió distinguir
+los fallos del codigo de los del protocolo.
+
+## D-015 · Token de testnet: contrato de prueba en lugar de CPUSD — 26-09-2026
+Estado: **abierto, requiere decisión de P0-01.**
+
+El contrato mueve fondos con `TokenClient`, que es la interfaz del Stellar Asset Contract:
+si `config.token` no apunta a un SAC desplegado, `fund()` falla y el escrow nunca llega a
+`EvidenceSubmitted`, que es el estado desde el que el agente atesta.
+
+En la red publica de Stellar **no hay un SAC desplegado para una divisa de prueba**. Para
+poder ejercitar el flujo completo se escribio `contracts/test-token/`, un contrato minimo
+con la interfaz de SAC (`transfer`, `balance`, `mint`, `admin`).
+
+**Consecuencia honesta sobre lo verificado:** todo lo demas esta probado contra la cadena
+de verdad —`attest` PASS y FAIL desde el agente, keeper, `finalize` con fallback split,
+ghost supplier, ghost engine, idempotencia, correccion unica, disputa y `resolve`— pero
+**contra un token que no es CPUSD**. La logica del escrow, los plazos, la correccion y la
+firma estan verificadas; la unidad monetaria, no.
+
+Pendiente de decidir: desplegar un SAC nuevo en testnet como CPUSD sintetico, o declarar
+que el alcance verificable se limita al token de prueba. Mientras siga asi, ninguna
+corrida puede presentarse como una prueba de CPUSD.
+
+**Defecto conocido que esta decision destapa:** el valor por defecto de `--currency` en el
+CLI es la cadena `"CPUSD"`, y desde D-016 el keeper contrasta `expected_currency` contra
+`snapshot.config.token`, que es una direccion `C...`. Con un SAC real, cualquier
+ejecucion sin `--currency` explicito se rechaza. El default quedo mintiendo y con el token
+de prueba pasaba solo porque ambos valores coincidian.
+
+## D-016 · Validaciones que completan la atestacion — 26-09-2026
+Estado: **hecho y verificado.**
+
+Revision de P0-07 sobre `main` (Gonza, 26-09) dejo cuatro hallazgos. Los tres de codigo
+estan cerrados; el cuarto era el token (D-015).
+
+1. **Temporales de test aislados.** Cuatro sitios escribian en directorios fijos de
+   `temp_dir()`, y con dos procesos de `cargo test` a la vez se pisan. Verificado con cuatro
+   procesos simultaneos: salida 0 y cero fallos en los cuatro.
+2. **Importe y token anclados al contrato.** El motor evaluaba con el importe de la linea de
+   comandos y solo contrastaba el hash de evidencia, lo que **no alcanza**: un bundle puede
+   ser coherente consigo mismo y llevar un importe que no es el del escrow, en cuyo caso el
+   hash coincidiria y la atestacion describiria otro importe. `Report` registra ahora el
+   importe y la divisa con los que se evaluo, y tanto `plan_attestation` como el keeper
+   rechazan que difieran de los del contrato. `report_hash` no cambia, porque se calcula de
+   un subconjunto explicito.
+3. **JSON estricto en las entradas.** `strict_loads()` existia y no lo usaba ninguna entrada
+   de produccion. El CLI y el keeper parseaban con `serde_json::from_str`, que acepta claves
+   duplicadas y se queda con la ultima en silencio; como el hash se calcula despues, la
+   firma seria legitima sobre un bundle que el proveedor no entrego.
+
+**Consecuencia de proceso:** la verificacion se hizo contra `main` en `4563e00`, que quedo
+seis commits atras. Antes de leer un informe como vigente conviene comprobar sobre que
+commit se ejecuto.
+
+## D-017 · Fuera el montador de testnet propio — 26-09-2026
+Estado: **hecho.**
+
+Existia `examples/testnet_setup.rs`, que montaba escrows copiando la logica de firma en vez
+de delegar en la de produccion. Arrastraba los tres fallos de D-013 mas el de
+`SourceAccount`, y **compilaba sin errores**, asi que el fallo solo aparecia al usarlo, con
+un error de red que invitaba a culpar al protocolo. `examples/keygen.rs` tampoco lo usaba
+nadie.
+
+Se borraron ambos. El montaje de testnet se documenta con el CLI de Stellar, que ademas
+sirve de control: si una transaccion entra por el CLI y no por el agente, el problema esta
+en el agente. Mantener una segunda implementacion de firma junto a la buena es una forma de
+reintroducir los fallos que la primera ya corrigio.
+
 ## Registro de cambios
 
 | Fecha | Decisión | Responsable | Efecto |
@@ -129,3 +273,9 @@ Pendiente para cerrar P0-12: enlaces de demo/testnet/explorer/video (depende de 
 | 25-09-2026 | D-006: chequeo de marca/dominio ejecutado (sin homógrafos exactos; `.com` libre; INDECOPI/INPI no consultados) | Linder | Nombre CanguPay se mantiene como nombre de trabajo |
 | 25-09-2026 | D-010: licencia MIT adoptada; `LICENSE` escrito | Equipo | Repo publicable con licencia clara |
 | 25-09-2026 | D-011: README con fuente de verdad, guion de pitch/video y log de validación sin enviar | Linder | P0-12 avanzado; demo/video quedan como pendiente de P0-11 |
+| 26-09-2026 | D-012: stack efectivo documentado (agente Rust, web Next.js, lectura por Stellar RPC, getter `snapshot()`) | Equipo | Propuesto para ratificar en P0-00; cierra el contenido de D-003, pendiente la firma |
+| 26-09-2026 | D-013: convenciones de serializacion que la red exige | Equipo | Explica por que el agente fallo contra la red pese a pasar las pruebas locales |
+| 26-09-2026 | D-014: toolchain unificado en protocolo 28 | Equipo | El WASM exige `stellar contract build`; afecta al pipeline de todos los contratos |
+| 26-09-2026 | D-015: token de testnet es un contrato de prueba, no CPUSD | Equipo | **Abierto.** Bloquea presentar las corridas como prueba de CPUSD |
+| 26-09-2026 | D-016: cierre de los hallazgos de revision de P0-07 | Equipo | Tres de codigo cerrados; el cuarto es D-015 |
+| 26-09-2026 | D-017: fuera el montador de testnet que duplicaba la firma | Equipo | El montaje usa el CLI, que sirve de control |

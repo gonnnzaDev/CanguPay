@@ -35,7 +35,7 @@ Comandos:
 Opciones:
   --bundle <ruta>        bundle de evidencia en JSON (o CANGUPA_BUNDLE)
   --amount <entero>      importe esperado en unidades minimas (o CANGUPA_EXPECTED_AMOUNT)
-  --currency <code>      divisa esperada, por defecto CPUSD
+  --currency <C...>      token del contrato; obligatorio para atestar
   --contract <C...>      id del contrato (o CANGUPA_CONTRACT_ID)
   --rpc <url>            endpoint RPC (o CANGUPA_RPC_URL)
   --network <pass>       passphrase de red (o CANGUPA_NETWORK)
@@ -97,7 +97,7 @@ impl Options {
         let mut opts = Options {
             bundle: None,
             amount: None,
-            currency: "CPUSD".to_string(),
+            currency: String::new(),
             contract: None,
             rpc: None,
             network: None,

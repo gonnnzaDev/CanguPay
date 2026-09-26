@@ -267,6 +267,11 @@ fn check_matches_contract(config: &KeeperConfig, snapshot: &EscrowSnapshot) -> R
             config.expected_amount, snapshot.config.amount
         )));
     }
+    if config.expected_currency.is_empty() {
+        return Err(AgentError::ContractConfigMismatch(
+            "falta el token del contrato (--currency <C...> o CANGUPA_EXPECTED_CURRENCY)".into(),
+        ));
+    }
     if config.expected_currency != snapshot.config.token {
         return Err(AgentError::ContractConfigMismatch(format!(
             "token local {} != token del contrato {}",
@@ -540,6 +545,8 @@ pub fn config_from_env() -> Result<KeeperConfig> {
         .ok_or_else(|| {
             AgentError::Config("falta CANGUPA_EXPECTED_AMOUNT (unidades minimas)".into())
         })?;
+    // La divisa esperada es la direccion del token del contrato. No tiene default
+    // razonable: un default mintiendo se rechaza con un mensaje que no explica nada.
     let expected_currency =
         std::env::var("CANGUPA_EXPECTED_CURRENCY").unwrap_or_else(|_| "CPUSD".to_string());
     let poll_interval = std::env::var("CANGUPA_POLL_SECONDS")
@@ -1212,5 +1219,22 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         let strict = crate::canonical::strict_loads(&text);
         assert!(strict.is_err(), "el parser estricto tiene que rechazar");
+    }
+
+    #[test]
+    fn a_missing_token_is_reported_as_missing_not_as_a_mismatch() {
+        // Un default que miente compararia una cadena vacia con una direccion y
+        // el operador veria un "token local != token del contrato" sin pista de
+        // que faltaba pasarle el token.
+        let path = bundle_path("no-token", 1000);
+        let chain = FakeChain::new(EscrowState::EvidenceSubmitted, None);
+        let mut cfg = config(&path);
+        cfg.expected_currency = String::new();
+        let err = observe(&chain, &cfg).unwrap_err();
+        assert!(
+            matches!(err, AgentError::ContractConfigMismatch(_)),
+            "{err}"
+        );
+        assert!(format!("{err}").contains("falta el token"), "{err}");
     }
 }

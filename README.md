@@ -189,7 +189,7 @@ por el agente, el problema está en el agente y no en la red.
 ```bash
 # 4. El proveedor entrega evidencia. El hash debe ser el que calcula el motor.
 cargo run -p attestation-agent --bin cangu-attest -- evaluate \
-    --bundle evidence.json --amount 10000000000 --currency CPUSD --json
+    --bundle evidence.json --amount 10000000000 --currency <C... del token> --json
 
 stellar contract invoke --id $ESCROW --source-account supplier --network $NETWORK \
     -- submit_evidence --evidence-bundle-hash <evidence_bundle_hash>

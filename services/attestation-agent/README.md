@@ -17,6 +17,8 @@ cargo run -p attestation-agent --bin cangu-attest -- selfcheck
 # Reporte PASS/FAIL de un bundle local (sale con 1 si es FAIL).
 cargo run -p attestation-agent --bin cangu-attest -- evaluate \
     --bundle evidence.json --amount 1000 --currency CPUSD
+# Ojo: en `evaluate` la divisa es la que declaran los documentos del bundle.
+# En `attest` y `keeper` es la direccion del token del contrato (C...).
 
 # Estado real del contrato.
 cargo run -p attestation-agent --bin cangu-attest -- status \
