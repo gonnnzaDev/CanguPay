@@ -81,9 +81,150 @@ docs/                            # spec, decisiones, demos
 
 ## Puesta en marcha
 
-> 🚧 Los comandos se documentan a medida que se verifican en testnet.
+### Requisitos
 
-El equipo debe configurar el workspace y verificar comandos reales de build, test y deploy en P0-00. Para comprobar los fixtures sintéticos localmente: `python3 scripts/verify_fixtures.py`.
+- Rust estable y el target `wasm32v1-none`.
+- **`stellar` CLI 25.2 o superior** (probado con 28.0.0). No es opcional: desde
+  `soroban-sdk` 28 el WASM **no** se compila con `cargo build --target wasm32v1-none`
+  a secas, falla con un error que lo dice. Hay que usar `stellar contract build`.
+
+### Build
+
+```bash
+# Contrato. Genera target/wasm32v1-none/release/conditional_payment.wasm
+stellar contract build --package conditional-payment
+
+# Token de prueba, solo para testnet (NO es CPUSD, ver Declaraciones)
+stellar contract build --package test-token
+
+# Regenerar el ABI commiteado
+stellar contract info interface \
+    --wasm target/wasm32v1-none/release/conditional_payment.wasm \
+    --output json > contracts/conditional-payment/abi/conditional_payment.json
+```
+
+### Test
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+169 tests. Reparto de los tx hashes en consola: 105 del agente (unitarios), 5 de
+paridad con fixtures, 59 del contrato.
+
+Paridad con el motor de reglas de Python, que es el oráculo:
+
+```bash
+cargo test -p attestation-agent --test golden
+python3 services/attestation-agent/app/engine.py <bundle.json>   # referencia
+```
+
+### Deploy en testnet
+
+```bash
+export NETWORK=testnet
+export PASSPHRASE="Test SDF Network ; September 2015"
+
+# 1. Cuentas. Se generan fuera del repo y NO se commitean.
+stellar keys generate deployer
+stellar keys generate buyer
+stellar keys generate supplier
+stellar keys generate engine
+stellar keys generate resolver
+for r in deployer buyer supplier engine resolver; do
+  curl -s "https://friendbot.stellar.org/?addr=$(stellar keys public-key $r)"
+done
+
+# 2. Desplegar
+stellar contract deploy --source-account deployer --network $NETWORK \
+    --wasm target/wasm32v1-none/release/conditional_payment.wasm
+
+# 3. Montar un escrow (el orden de claves del --config es el del ABI, por nombre)
+TOKEN=<contract id del token de prueba>
+ESCROW=<contract id del escrow>
+AMOUNT=10000000000   # unidades minimas: 1000 con 7 decimales
+
+stellar contract invoke --id $TOKEN --source-account buyer --network $NETWORK \
+    -- initialize --admin <buyer>
+
+stellar contract invoke --id $TOKEN --source-account buyer --network $NETWORK \
+    -- mint --to <buyer> --amount $AMOUNT
+
+CONFIG=$(cat <<JSON
+{ "amount": "$AMOUNT", "attestation_period": 3600, "buyer": "<buyer>",
+  "correction_period": 3600, "engine": "<engine>", "fallback_outcome": 2,
+  "fallback_split_bps": 0, "max_correction_attempts": 1, "objection_period": 3600,
+  "resolution_period": 3600, "resolver": "<resolver>", "submission_period": 3600,
+  "supplier": "<supplier>", "token": "$TOKEN" }
+JSON
+)
+stellar contract invoke --id $ESCROW --source-account buyer --network $NETWORK \
+    -- initialize --config "$CONFIG"
+stellar contract invoke --id $ESCROW --source-account buyer --network $NETWORK -- fund
+```
+
+### Verificar en la red
+
+```bash
+# 4. El proveedor entrega evidencia. El hash debe ser el que calcula el motor.
+cargo run -p attestation-agent --bin cangu-attest -- evaluate \
+    --bundle evidence.json --amount 10000000000 --currency CPUSD --json
+
+stellar contract invoke --id $ESCROW --source-account supplier --network $NETWORK \
+    -- submit_evidence --evidence-bundle-hash <evidence_bundle_hash>
+
+# 5. El agente lee el estado real del contrato
+cargo run -p attestation-agent --bin cangu-attest -- status \
+    --rpc https://soroban-testnet.stellar.org --network "$PASSPHRASE" --contract $ESCROW
+
+# 6. El agente atesta. Firma con la clave engine, NUNCA con la del buyer.
+export CANGUPA_ENGINE_SECRET=<secreto de la cuenta engine, fuera del repo>
+cargo run -p attestation-agent --bin cangu-attest -- attest \
+    --rpc https://soroban-testnet.stellar.org --network "$PASSPHRASE" \
+    --contract $ESCROW --bundle evidence.json --amount 10000000000
+
+# 7. O bien el keeper, que vigila y atesta solo cuando la evidencia esta lista
+cargo run -p attestation-agent --bin cangu-attest -- keeper \
+    --rpc https://soroban-testnet.stellar.org --network "$PASSPHRASE" \
+    --contract $ESCROW --bundle evidence.json --amount 10000000000 \
+    --poll 10 --max-iterations 60
+
+# 8. Vencimientos. finalize() no exige auth y el contrato decide si el plazo vencio.
+cargo run -p attestation-agent --bin cangu-attest -- finalize \
+    --rpc https://soroban-testnet.stellar.org --network "$PASSPHRASE" --contract $ESCROW
+```
+
+### Contratos y transacciones en testnet
+
+Ejecutado contra `soroban-testnet.stellar.org` (protocolo 28) con toolchain
+unificado en SDK 28. Todos los tx hashes son publicos y verificables en
+`https://stellar.expert/testnet/tx/<hash>`.
+
+| Contrato | ID | Qué demuestra |
+| --- | --- | --- |
+| Escrow flujo feliz | `CCGZQCVPZPJLTTD4NSCL7MZWFH6PKFAAZCSGXCPZH7ZEB7T56L2WJ2OF` | `attest` PASS desde el agente |
+| Escrow fallo | `CCQ7XTWYMGKMTBPJ5UIJ764GDQX7ZE2HYSZ3EPW4XUELSC7755SPNJ7A` | `attest` FAIL desde el agente |
+| Escrow keeper | `CDUEGOAJXOG5VD6M4I7SMVEV2S6MNAQKBPOWUY5UZQ7AJIN6U7Q4OHEU` | el keeper atesta solo |
+| Escrow fallback split | `CB6SQ2N2IWDS36HVDF7CXB2RPVJVJLCYEKERR5EOCEEJR656F7TH4OJY` | `finalize` con split 3333 |
+| Escrow keeper finalize | `CD4GXNR7F5MSFZGJ6SMMNRXTICTUYRRM2UV5UNDKXZXDW3ORKR275YXD` | el keeper liquida solo |
+| Escrow corrección | `CAXSLOYSXT7DETC26ED52V2LZ4SNCHSM6PI7JZ2Y36N2NZS4ZCPLP3GO` | correccion, 2a rechazada, disputa, `resolve` split 5000 |
+| Escrow ghost supplier | `CAY7JN2LLSYJNDTQNLHGB6ZGSOB3UFSTVINBSC5KRL2BDF5SAGWGZFOD` | `Finalized(reason: 1)` y reembolso |
+| Escrow ghost engine | `CC6HQPN27COJTIXBQOP247PGHWIBBYS7CRNEWDI77JO52PH2JBY5JPB6` | `Finalized(reason: 2)` y reembolso |
+| Token de prueba | `CDZOKMFYQ55D4IWBGMIZHYV2HYP7L4JJ5ABJ4K5KTQ2OS5WNDZCMTNAB` | `transfer`/`balance` del fondeo |
+
+Transacciones de los caminos del agente:
+
+| Camino | tx hash |
+| --- | --- |
+| `attest` PASS | `f7168ae3e3c0f4e7cf59bc66353f7d9f3e24510043144dcf4864b2f003e1976f` |
+| `attest` FAIL | `bb714f80fe2acc5f6b8192fd5ec106a90c3fada9f4102767a72619a12c9f872d` |
+| `keeper` atesta solo | `abc981745d898e23190a8e46758508b1b5bd438fff38b1a8f77ac45613623e52` |
+
+El token de la tabla es un **contrato de prueba**, no CPUSD: en la red publica de
+Stellar no hay un SAC desplegado para una divisa de prueba y `fund()` necesita uno.
+Declarado tambien en la nota de CPUSD de este README.
 
 Usá **tres perfiles de navegador** con Freighter (buyer, supplier, resolver) para no firmar con el rol equivocado.
 

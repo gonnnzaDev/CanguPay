@@ -1,0 +1,1010 @@
+[
+  {
+    "function_v0": {
+      "doc": "Fondea la operaci\\xc3\\xb3n con un pull at\\xc3\\xb3mico: transfiere `amount` desde el\\nbuyer al contrato y pasa a `FUNDED` en la misma operaci\\xc3\\xb3n l\\xc3\\xb3gica. Si\\nel pull falla (p. ej. saldo insuficiente), la llamada revierte\\ncompleta y la operaci\\xc3\\xb3n no queda parcialmente fondeada.",
+      "name": "fund",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Lecturas para la UI: estado y configuraci\\xc3\\xb3n vigentes.",
+      "name": "state",
+      "inputs": [],
+      "outputs": [
+        {
+          "udt": {
+            "name": "EscrowState"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "El engine atestigua PASS o FAIL con su `report_hash`. No mueve fondos.\\nDebe ocurrir antes de `attestation_deadline`.",
+      "name": "attest",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "outcome",
+          "type": {
+            "udt": {
+              "name": "AttestationOutcome"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "report_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cancela la operaci\\xc3\\xb3n. Solo el buyer, y \\xc3\\xbanicamente antes de fondear.",
+      "name": "cancel",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "config",
+      "inputs": [],
+      "outputs": [
+        {
+          "udt": {
+            "name": "EscrowConfig"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "El buyer aprueba un PASS: el contrato transfiere exactamente `amount`\\nal supplier una sola vez, solo antes de `attested_at+objection_period`.\\nDesde `now >= deadline` solo `finalize()` puede ejecutar el vencimiento\\n(`NoObjection`).",
+      "name": "approve",
+      "inputs": [],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Resolver decide: solo resolver, solo en DISPUTED, antes de resolution_deadline.\\nValida split_bps (Split 1..9999, otros 0) y conserva amount con floor.",
+      "name": "resolve",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "outcome",
+          "type": {
+            "udt": {
+              "name": "FallbackOutcome"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "split_bps",
+          "type": "u32"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Ejecuta vencimientos. Permissionless: cualquier cuenta puede invocarla.\\n- `FUNDED` sin evidencia y `now >= submission_deadline` \\xe2\\x86\\x92 `REFUNDED` (`SUBMISSION_TIMEOUT`), reembolsa buyer.\\n- `EVIDENCE_SUBMITTED` sin atestaci\\xc3\\xb3n y `now >= attestation_deadline` \\xe2\\x86\\x92 `REFUNDED` (`ATTESTATION_TIMEOUT`), reembolsa buyer.\\n- `ATTESTED_PASS` sin objeci\\xc3\\xb3n y `now >= attested_at+objection_period` \\xe2\\x86\\x92 `RELEASED` (`NO_OBJECTION`), paga supplier.\\n- `ATTESTED_FAIL` sin correcci\\xc3\\xb3n/disputa y `now >= attested_at+correction_period` \\xe2\\x86\\x92 `REFUNDED` (`CORRECTION_TIMEOUT`), reembolsa buyer.\\nIdempotente: en estados terminales devuelve el estado sin transferir ni emitir. En `CREATED` o antes del deadline panic `NotFinalizableYet`.",
+      "name": "finalize",
+      "inputs": [],
+      "outputs": [
+        {
+          "udt": {
+            "name": "EscrowState"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Instantanea completa en una sola llamada.\\n\\nEs la lectura que consume el agente de atestacion: `state()` y `config()`\\nno exponen los plazos ni los hashes, y leerlos de `config()` por posicion\\nobliga a quien lee a conocer el orden de los campos. Este getter devuelve\\ncada dato con nombre, incluyendo los plazos derivados (`objection_deadline`,\\n`correction_deadline`) y el timestamp del ledger, para que la decision se\\ntome contra el mismo reloj con el que el contrato aplica los vencimientos.\\n\\nNo cambia de estado ni exige `auth`: es una vista.",
+      "name": "snapshot",
+      "inputs": [],
+      "outputs": [
+        {
+          "udt": {
+            "name": "EscrowSnapshot"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Crea la operaci\\xc3\\xb3n. Solo el buyer puede crearla, y solo una vez: nadie\\npuede abrir una operaci\\xc3\\xb3n nombrando a un buyer que no la autoriz\\xc3\\xb3.",
+      "name": "initialize",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "config",
+          "type": {
+            "udt": {
+              "name": "EscrowConfig"
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Abre disputa: solo buyer desde ATTESTED_PASS (dentro de objection_period)\\no supplier desde ATTESTED_FAIL (dentro de correction_period), una sola vez,\\ncon dos hashes obligatorios. Pasa a DISPUTED y abre resolution_period.",
+      "name": "raise_dispute",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "reason_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "dispute_evidence_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "El supplier presenta el hash del bundle de evidencia antes del\\n`submission_deadline` calculado en el fondeo, o como correcci\\xc3\\xb3n \\xc3\\xbanica\\ntras `ATTESTED_FAIL` antes de `correction_deadline`.",
+      "name": "submit_evidence",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "evidence_bundle_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Error",
+      "cases": [
+        {
+          "doc": "",
+          "name": "AlreadyInitialized",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "InvalidAmount",
+          "value": 3
+        },
+        {
+          "doc": "",
+          "name": "InvalidSubmissionPeriod",
+          "value": 4
+        },
+        {
+          "doc": "",
+          "name": "InvalidState",
+          "value": 5
+        },
+        {
+          "doc": "",
+          "name": "SubmissionDeadlinePassed",
+          "value": 7
+        },
+        {
+          "doc": "",
+          "name": "AlreadyApproved",
+          "value": 8
+        },
+        {
+          "doc": "",
+          "name": "NotFinalizableYet",
+          "value": 10
+        },
+        {
+          "doc": "",
+          "name": "InvalidAttestationPeriod",
+          "value": 11
+        },
+        {
+          "doc": "",
+          "name": "InvalidObjectionPeriod",
+          "value": 12
+        },
+        {
+          "doc": "",
+          "name": "InvalidCorrectionPeriod",
+          "value": 13
+        },
+        {
+          "doc": "",
+          "name": "InvalidResolutionPeriod",
+          "value": 14
+        },
+        {
+          "doc": "",
+          "name": "InvalidFallback",
+          "value": 15
+        },
+        {
+          "doc": "",
+          "name": "AttestationDeadlinePassed",
+          "value": 16
+        },
+        {
+          "doc": "",
+          "name": "ObjectionDeadlinePassed",
+          "value": 17
+        },
+        {
+          "doc": "",
+          "name": "InvalidMaxCorrectionAttempts",
+          "value": 18
+        },
+        {
+          "doc": "",
+          "name": "ArithmeticOverflow",
+          "value": 19
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "EscrowState",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Created"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Funded"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "EvidenceSubmitted"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "AttestedPass"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "AttestedFail"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Released"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Cancelled"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Refunded"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Disputed"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Split"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "EscrowConfig",
+      "fields": [
+        {
+          "doc": "",
+          "name": "amount",
+          "type": "i128"
+        },
+        {
+          "doc": "",
+          "name": "attestation_period",
+          "type": "u64"
+        },
+        {
+          "doc": "",
+          "name": "buyer",
+          "type": "address"
+        },
+        {
+          "doc": "",
+          "name": "correction_period",
+          "type": "u64"
+        },
+        {
+          "doc": "",
+          "name": "engine",
+          "type": "address"
+        },
+        {
+          "doc": "",
+          "name": "fallback_outcome",
+          "type": {
+            "udt": {
+              "name": "FallbackOutcome"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "fallback_split_bps",
+          "type": "u32"
+        },
+        {
+          "doc": "",
+          "name": "max_correction_attempts",
+          "type": "u32"
+        },
+        {
+          "doc": "",
+          "name": "objection_period",
+          "type": "u64"
+        },
+        {
+          "doc": "",
+          "name": "resolution_period",
+          "type": "u64"
+        },
+        {
+          "doc": "",
+          "name": "resolver",
+          "type": "address"
+        },
+        {
+          "doc": "",
+          "name": "submission_period",
+          "type": "u64"
+        },
+        {
+          "doc": "",
+          "name": "supplier",
+          "type": "address"
+        },
+        {
+          "doc": "",
+          "name": "token",
+          "type": "address"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Instantanea completa para lectores externos (agente de atestacion, UI).\\n\\nTodo lo que el motor necesita para decidir va aqui, con nombre: nadie tiene\\nque adivinar la posicion de un campo dentro del `ScVec` ni conocer las\\n`DataKey` privadas. Los plazos que aun no aplican son `None`, y\\n`ledger_timestamp` es el reloj que el propio contrato usa para los plazos.",
+      "lib": "",
+      "name": "EscrowSnapshot",
+      "fields": [
+        {
+          "doc": "",
+          "name": "attestation_deadline",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "attested_at",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "config",
+          "type": {
+            "udt": {
+              "name": "EscrowConfig"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "correction_attempts",
+          "type": "u32"
+        },
+        {
+          "doc": "`attested_at + correction_period`: hasta ahi el supplier corrige.",
+          "name": "correction_deadline",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "dispute_evidence_hash",
+          "type": {
+            "option": {
+              "value_type": {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "dispute_reason_hash",
+          "type": {
+            "option": {
+              "value_type": {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "disputed_at",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "Hash del bundle que el supplier subio; es la entrada del motor.",
+          "name": "evidence_bundle_hash",
+          "type": {
+            "option": {
+              "value_type": {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "funded_at",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "Reloj del ledger actual: la misma fuente de verdad de los plazos.",
+          "name": "ledger_timestamp",
+          "type": "u64"
+        },
+        {
+          "doc": "`attested_at + objection_period`: hasta ahi el buyer puede objetar.",
+          "name": "objection_deadline",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "Hash del reporte con el que el engine atestiguo, si ya atesto.\\nEl outcome no se duplica aqui: se deduce de `state`, que es la unica\\nfuente que `attest()` y `dispute()` mantienen coherente.",
+          "name": "report_hash",
+          "type": {
+            "option": {
+              "value_type": {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "resolution_deadline",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "state",
+          "type": {
+            "udt": {
+              "name": "EscrowState"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "submission_deadline",
+          "type": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "FinalizeReason",
+      "cases": [
+        {
+          "doc": "",
+          "name": "SubmissionTimeout",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "AttestationTimeout",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "NoObjection",
+          "value": 3
+        },
+        {
+          "doc": "",
+          "name": "CorrectionTimeout",
+          "value": 4
+        },
+        {
+          "doc": "",
+          "name": "ResolutionTimeout",
+          "value": 5
+        }
+      ]
+    }
+  },
+  {
+    "udt_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "FallbackOutcome",
+      "cases": [
+        {
+          "doc": "",
+          "name": "Release",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "Refund",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "Split",
+          "value": 3
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "AttestationOutcome",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Pass"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Fail"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Funded",
+      "prefix_topics": [
+        "funded"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "funded_at",
+          "type": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "submission_deadline",
+          "type": "u64",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Approved",
+      "prefix_topics": [
+        "approved"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "to",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type": "i128",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Attested",
+      "prefix_topics": [
+        "attested"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "outcome",
+          "type": {
+            "udt": {
+              "name": "AttestationOutcome"
+            }
+          },
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "report_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          },
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Resolved",
+      "prefix_topics": [
+        "resolved"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "by",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "outcome",
+          "type": {
+            "udt": {
+              "name": "FallbackOutcome"
+            }
+          },
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "split_bps",
+          "type": "u32",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Cancelled",
+      "prefix_topics": [
+        "cancelled"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "by",
+          "type": "address",
+          "location": "topic_list"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Finalized",
+      "prefix_topics": [
+        "finalized"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "reason",
+          "type": {
+            "udt": {
+              "name": "FinalizeReason"
+            }
+          },
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DisputeRaised",
+      "prefix_topics": [
+        "dispute_raised"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "by",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "reason_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          },
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "dispute_evidence_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          },
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "EscrowCreated",
+      "prefix_topics": [
+        "escrow_created"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "buyer",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "supplier",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "engine",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "resolver",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "token",
+          "type": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "submission_period",
+          "type": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "attestation_period",
+          "type": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "objection_period",
+          "type": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "correction_period",
+          "type": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "resolution_period",
+          "type": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "fallback_outcome",
+          "type": {
+            "udt": {
+              "name": "FallbackOutcome"
+            }
+          },
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "fallback_split_bps",
+          "type": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "max_correction_attempts",
+          "type": "u32",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "EvidenceSubmitted",
+      "prefix_topics": [
+        "evidence_submitted"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "attempt",
+          "type": "u32",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "evidence_bundle_hash",
+          "type": {
+            "bytes_n": {
+              "n": 32
+            }
+          },
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  }
+]
