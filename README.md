@@ -270,8 +270,6 @@ Las demos usan plazos abreviados. Guion de presentación en [`docs/pitch-script.
 
 ## Demo, testnet y video
 
-> ⏳ **Pendiente (P0-11).** Este bloque queda reservado para los enlaces verificables cuando la demo corra en testnet.
-
 - **Contrato (testnet):** `_[contract id pendiente]_`
 - **Transacciones de las tres demos:** `_[tx hashes pendientes]_`
 - **Explorer:** `_[enlace a explore.stellar.org testnet, pendiente]_`
