@@ -269,7 +269,9 @@ mod tests {
 
     #[test]
     fn accepts_key_file_outside_the_repo() {
-        let dir = std::env::temp_dir().join("cangupay-p07-signer");
+        // Directorio propio de la ejecucion: uno fijo hace que dos `cargo test`
+        // en paralelo se escriban encima el `engine.key` del otro.
+        let dir = std::env::temp_dir().join(format!("cangupay-p07-signer-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("engine.key");
         std::fs::write(&file, TEST_SEED_HEX).unwrap();

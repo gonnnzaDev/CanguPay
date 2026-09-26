@@ -130,7 +130,10 @@ mod tests {
     #[test]
     fn a_manifest_with_a_wrong_hash_is_reported_not_ignored() {
         let source = fixture_dir();
-        let dir = std::env::temp_dir().join("cangupay-p07-badmanifest");
+        // Propio de la ejecucion: con uno fijo, dos `cargo test` a la vez se
+        // pisan la copia de fixtures y el test falla sin relacion con lo que prueba.
+        let dir =
+            std::env::temp_dir().join(format!("cangupay-p07-badmanifest-{}", std::process::id()));
         // Copia los fixtures y altera un hash del manifiesto: el chequeo debe fallar y
         // decir cual, en vez de dar el visto bueno.
         for case in CASES {

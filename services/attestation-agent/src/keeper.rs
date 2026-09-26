@@ -878,7 +878,8 @@ mod tests {
 
     #[test]
     fn example_bundle_is_a_pass() {
-        let dir = std::env::temp_dir().join("cangupay-p07-keeper");
+        // Directorio propio de la ejecucion, por el mismo motivo que los demas.
+        let dir = std::env::temp_dir().join(format!("cangupay-p07-example-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("example.json");
         write_example_bundle(&path).unwrap();
