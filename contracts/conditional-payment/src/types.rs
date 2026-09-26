@@ -8,6 +8,7 @@ pub struct EscrowConfig {
     pub buyer: Address,
     pub supplier: Address,
     pub engine: Address,
+    pub resolver: Address,
     pub token: Address,
     pub amount: i128,
     pub submission_period: u64,
@@ -17,6 +18,7 @@ pub struct EscrowConfig {
     pub resolution_period: u64,
     pub fallback_outcome: FallbackOutcome,
     pub fallback_split_bps: u32,
+    pub max_correction_attempts: u32,
 }
 
 #[contracttype]
@@ -73,6 +75,8 @@ pub enum DataKey {
     DisputedAt,
     ResolutionDeadline,
     CorrectionAttempts,
+    DisputeReasonHash,
+    DisputeEvidenceHash,
 }
 
 #[contracterror]
@@ -93,4 +97,6 @@ pub enum Error {
     InvalidFallback = 15,
     AttestationDeadlinePassed = 16,
     ObjectionDeadlinePassed = 17,
+    InvalidMaxCorrectionAttempts = 18,
+    ArithmeticOverflow = 19,
 }

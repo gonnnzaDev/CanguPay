@@ -44,6 +44,7 @@ struct TestContext {
     buyer: Address,
     supplier: Address,
     engine: Address,
+    resolver: Address,
 }
 
 fn setup(mock_all_auths: bool) -> TestContext {
@@ -58,6 +59,7 @@ fn setup(mock_all_auths: bool) -> TestContext {
     let buyer = Address::generate(&env);
     let supplier = Address::generate(&env);
     let engine = Address::generate(&env);
+    let resolver = Address::generate(&env);
     let contract = env.register(ConditionalPayment, ());
     TestContext {
         env,
@@ -67,6 +69,7 @@ fn setup(mock_all_auths: bool) -> TestContext {
         buyer,
         supplier,
         engine,
+        resolver,
     }
 }
 
@@ -101,6 +104,7 @@ impl TestContext {
             buyer: self.buyer.clone(),
             supplier: self.supplier.clone(),
             engine: self.engine.clone(),
+            resolver: self.resolver.clone(),
             token: self.token.clone(),
             amount: AMOUNT,
             submission_period: SUBMISSION_PERIOD,
@@ -110,6 +114,7 @@ impl TestContext {
             resolution_period: RESOLUTION_PERIOD,
             fallback_outcome: FallbackOutcome::Refund,
             fallback_split_bps: 0,
+            max_correction_attempts: 1,
         }
     }
 
@@ -124,6 +129,8 @@ impl TestContext {
     }
 
     fn to_attested_pass(&self) {
+        // Helper happy-path con mock_all_auths; auth por rol se verifica
+        // exhaustivamente en los tests de auth estrictos (setup(false) + MockAuth).
         self.initialize();
         self.mint_and_fund();
         self.client().submit_evidence(&evidence_hash(&self.env));
@@ -161,6 +168,7 @@ fn happy_path_pass_releases_funds() {
             buyer: ctx.buyer.clone(),
             supplier: ctx.supplier.clone(),
             engine: ctx.engine.clone(),
+            resolver: ctx.resolver.clone(),
             token: ctx.token.clone(),
             amount: AMOUNT,
             submission_period: SUBMISSION_PERIOD,
@@ -170,6 +178,7 @@ fn happy_path_pass_releases_funds() {
             resolution_period: RESOLUTION_PERIOD,
             fallback_outcome: FallbackOutcome::Refund,
             fallback_split_bps: 0,
+            max_correction_attempts: 1,
         }
         .to_xdr(&ctx.env, &ctx.contract),
     );
@@ -1059,6 +1068,30 @@ fn initialize_rejects_supplier_equals_engine() {
 }
 
 #[test]
+fn initialize_rejects_buyer_equals_resolver() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.resolver = bad.buyer.clone();
+    must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
+fn initialize_rejects_supplier_equals_resolver() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.resolver = bad.supplier.clone();
+    must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
+fn initialize_rejects_engine_equals_resolver() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.resolver = bad.engine.clone();
+    must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
 fn initialize_rejects_same_roles() {
     // las tres iguales (cubierto por los 3 anteriores, pero se mantiene por completitud)
     let ctx = setup(true);
@@ -1066,6 +1099,17 @@ fn initialize_rejects_same_roles() {
     bad.supplier = bad.buyer.clone();
     bad.engine = bad.buyer.clone();
     must_panic(|| ctx.client().initialize(&bad));
+}
+
+#[test]
+fn initialize_rejects_invalid_max_correction_attempts() {
+    let ctx = setup(true);
+    let mut bad = ctx.config();
+    bad.max_correction_attempts = 0;
+    must_panic(|| ctx.client().initialize(&bad));
+    let mut bad2 = ctx.config();
+    bad2.max_correction_attempts = 2;
+    must_panic(|| ctx.client().initialize(&bad2));
 }
 
 #[test]
@@ -1184,3 +1228,675 @@ fn correction_timeout_refunds_buyer() {
     assert_eq!(ctx.client().state(), EscrowState::Refunded);
     assert_eq!(ctx.token_balance(&ctx.buyer), AMOUNT);
 }
+
+// ── P0-04: corrección única, disputa y fallback ──
+
+#[test]
+fn correction_increments_attempt_and_restarts_deadline() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx.env));
+    assert_eq!(ctx.client().state(), EscrowState::AttestedFail);
+    let new_hash = BytesN::from_array(&ctx.env, &[8u8; 32]);
+    ctx.client().submit_evidence(&new_hash);
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e
+        == EvidenceSubmitted {
+            attempt: 1,
+            evidence_bundle_hash: new_hash.clone()
+        }
+        .to_xdr(&ctx.env, &ctx.contract)));
+    assert_eq!(ctx.client().state(), EscrowState::EvidenceSubmitted);
+    ctx.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx.env));
+    assert_eq!(ctx.client().state(), EscrowState::AttestedPass);
+}
+
+#[test]
+fn second_correction_is_rejected_but_dispute_after_second_fail_allowed() {
+    let ctx = setup(true);
+    ctx.initialize();
+    ctx.mint_and_fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx.env));
+    ctx.client()
+        .submit_evidence(&BytesN::from_array(&ctx.env, &[8u8; 32]));
+    ctx.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx.env));
+    assert_eq!(ctx.client().state(), EscrowState::AttestedFail);
+    must_panic(|| {
+        ctx.client()
+            .submit_evidence(&BytesN::from_array(&ctx.env, &[9u8; 32]))
+    });
+    assert_eq!(ctx.client().state(), EscrowState::AttestedFail);
+    let reason = BytesN::from_array(&ctx.env, &[10u8; 32]);
+    let evidence = BytesN::from_array(&ctx.env, &[11u8; 32]);
+    ctx.client().raise_dispute(&reason, &evidence);
+    assert_eq!(ctx.client().state(), EscrowState::Disputed);
+}
+
+#[test]
+fn raise_dispute_requires_hashes_and_correct_actor_within_deadline() {
+    let ctx = setup(true);
+    ctx.to_attested_pass();
+    let reason = BytesN::from_array(&ctx.env, &[10u8; 32]);
+    let evidence = BytesN::from_array(&ctx.env, &[11u8; 32]);
+    ctx.client().raise_dispute(&reason, &evidence);
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e
+        == DisputeRaised {
+            by: ctx.buyer.clone(),
+            reason_hash: reason.clone(),
+            dispute_evidence_hash: evidence.clone()
+        }
+        .to_xdr(&ctx.env, &ctx.contract)));
+    assert_eq!(ctx.client().state(), EscrowState::Disputed);
+
+    let ctx2 = setup(false);
+    let reason2 = BytesN::from_array(&ctx2.env, &[10u8; 32]);
+    let evidence2 = BytesN::from_array(&ctx2.env, &[11u8; 32]);
+    let init2 = MockAuthInvoke {
+        contract: &ctx2.contract,
+        fn_name: "initialize",
+        args: (ctx2.config(),).into_val(&ctx2.env),
+        sub_invokes: &[],
+    };
+    let pull2 = transfer_sub(
+        &ctx2.token,
+        ctx2.buyer.clone(),
+        ctx2.contract.clone(),
+        AMOUNT,
+        &ctx2.env,
+    );
+    let fund2 = MockAuthInvoke {
+        contract: &ctx2.contract,
+        fn_name: "fund",
+        args: soroban_sdk::Vec::new(&ctx2.env),
+        sub_invokes: &[pull2],
+    };
+    let submit2 = MockAuthInvoke {
+        contract: &ctx2.contract,
+        fn_name: "submit_evidence",
+        args: (evidence_hash(&ctx2.env),).into_val(&ctx2.env),
+        sub_invokes: &[],
+    };
+    let attest2 = MockAuthInvoke {
+        contract: &ctx2.contract,
+        fn_name: "attest",
+        args: (AttestationOutcome::Pass, report_hash(&ctx2.env)).into_val(&ctx2.env),
+        sub_invokes: &[],
+    };
+    let dispute2 = MockAuthInvoke {
+        contract: &ctx2.contract,
+        fn_name: "raise_dispute",
+        args: (reason2.clone(), evidence2.clone()).into_val(&ctx2.env),
+        sub_invokes: &[],
+    };
+    let mint2 = MockAuthInvoke {
+        contract: &ctx2.token,
+        fn_name: "mint",
+        args: (ctx2.buyer.clone(), AMOUNT).into_val(&ctx2.env),
+        sub_invokes: &[],
+    };
+    ctx2.env.mock_auths(&[
+        MockAuth {
+            address: &ctx2.token_admin,
+            invoke: &mint2,
+        },
+        MockAuth {
+            address: &ctx2.buyer,
+            invoke: &init2,
+        },
+        MockAuth {
+            address: &ctx2.buyer,
+            invoke: &fund2,
+        },
+        MockAuth {
+            address: &ctx2.supplier,
+            invoke: &submit2,
+        },
+        MockAuth {
+            address: &ctx2.engine,
+            invoke: &attest2,
+        },
+        MockAuth {
+            address: &ctx2.supplier,
+            invoke: &dispute2,
+        },
+    ]);
+    ctx2.sac().mint(&ctx2.buyer, &AMOUNT);
+    ctx2.initialize();
+    ctx2.client().fund();
+    ctx2.client().submit_evidence(&evidence_hash(&ctx2.env));
+    ctx2.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx2.env));
+    must_panic(|| ctx2.client().raise_dispute(&reason2, &evidence2));
+
+    let ctx3 = setup(true);
+    ctx3.initialize();
+    ctx3.mint_and_fund();
+    ctx3.client().submit_evidence(&evidence_hash(&ctx3.env));
+    ctx3.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx3.env));
+    let reason3 = BytesN::from_array(&ctx3.env, &[10u8; 32]);
+    let evidence3 = BytesN::from_array(&ctx3.env, &[11u8; 32]);
+    ctx3.client().raise_dispute(&reason3, &evidence3);
+    assert_eq!(ctx3.client().state(), EscrowState::Disputed);
+
+    let ctx4 = setup(false);
+    let reason4 = BytesN::from_array(&ctx4.env, &[10u8; 32]);
+    let evidence4 = BytesN::from_array(&ctx4.env, &[11u8; 32]);
+    let init4 = MockAuthInvoke {
+        contract: &ctx4.contract,
+        fn_name: "initialize",
+        args: (ctx4.config(),).into_val(&ctx4.env),
+        sub_invokes: &[],
+    };
+    let pull4 = transfer_sub(
+        &ctx4.token,
+        ctx4.buyer.clone(),
+        ctx4.contract.clone(),
+        AMOUNT,
+        &ctx4.env,
+    );
+    let fund4 = MockAuthInvoke {
+        contract: &ctx4.contract,
+        fn_name: "fund",
+        args: soroban_sdk::Vec::new(&ctx4.env),
+        sub_invokes: &[pull4],
+    };
+    let submit4 = MockAuthInvoke {
+        contract: &ctx4.contract,
+        fn_name: "submit_evidence",
+        args: (evidence_hash(&ctx4.env),).into_val(&ctx4.env),
+        sub_invokes: &[],
+    };
+    let attest4 = MockAuthInvoke {
+        contract: &ctx4.contract,
+        fn_name: "attest",
+        args: (AttestationOutcome::Fail, report_hash(&ctx4.env)).into_val(&ctx4.env),
+        sub_invokes: &[],
+    };
+    let dispute4 = MockAuthInvoke {
+        contract: &ctx4.contract,
+        fn_name: "raise_dispute",
+        args: (reason4.clone(), evidence4.clone()).into_val(&ctx4.env),
+        sub_invokes: &[],
+    };
+    let mint4 = MockAuthInvoke {
+        contract: &ctx4.token,
+        fn_name: "mint",
+        args: (ctx4.buyer.clone(), AMOUNT).into_val(&ctx4.env),
+        sub_invokes: &[],
+    };
+    ctx4.env.mock_auths(&[
+        MockAuth {
+            address: &ctx4.token_admin,
+            invoke: &mint4,
+        },
+        MockAuth {
+            address: &ctx4.buyer,
+            invoke: &init4,
+        },
+        MockAuth {
+            address: &ctx4.buyer,
+            invoke: &fund4,
+        },
+        MockAuth {
+            address: &ctx4.supplier,
+            invoke: &submit4,
+        },
+        MockAuth {
+            address: &ctx4.engine,
+            invoke: &attest4,
+        },
+        MockAuth {
+            address: &ctx4.buyer,
+            invoke: &dispute4,
+        },
+    ]);
+    ctx4.sac().mint(&ctx4.buyer, &AMOUNT);
+    ctx4.initialize();
+    ctx4.client().fund();
+    ctx4.client().submit_evidence(&evidence_hash(&ctx4.env));
+    ctx4.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx4.env));
+    must_panic(|| ctx4.client().raise_dispute(&reason4, &evidence4));
+
+    let ctx5 = setup(true);
+    ctx5.to_attested_pass();
+    ctx5.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + OBJECTION_PERIOD);
+    let reason5 = BytesN::from_array(&ctx5.env, &[10u8; 32]);
+    let evidence5 = BytesN::from_array(&ctx5.env, &[11u8; 32]);
+    must_panic(|| ctx5.client().raise_dispute(&reason5, &evidence5));
+
+    let ctx6 = setup(true);
+    ctx6.to_attested_pass();
+    let reason6 = BytesN::from_array(&ctx6.env, &[10u8; 32]);
+    let evidence6 = BytesN::from_array(&ctx6.env, &[11u8; 32]);
+    ctx6.client().raise_dispute(&reason6, &evidence6);
+    must_panic(|| ctx6.client().raise_dispute(&reason6, &evidence6));
+}
+
+#[test]
+fn resolve_before_deadline_with_split_validation() {
+    let ctx = setup(true);
+    ctx.to_attested_pass();
+    let reason = BytesN::from_array(&ctx.env, &[10u8; 32]);
+    let evidence = BytesN::from_array(&ctx.env, &[11u8; 32]);
+    ctx.client().raise_dispute(&reason, &evidence);
+    ctx.client().resolve(&FallbackOutcome::Split, &5000);
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e
+        == Resolved {
+            by: ctx.resolver.clone(),
+            outcome: FallbackOutcome::Split,
+            split_bps: 5000
+        }
+        .to_xdr(&ctx.env, &ctx.contract)));
+    assert_eq!(ctx.client().state(), EscrowState::Split);
+    assert_eq!(ctx.token_balance(&ctx.supplier), AMOUNT * 5000 / 10_000);
+    assert_eq!(
+        ctx.token_balance(&ctx.buyer),
+        AMOUNT - AMOUNT * 5000 / 10_000
+    );
+
+    let ctx2 = setup(true);
+    ctx2.to_attested_pass();
+    let reason2 = BytesN::from_array(&ctx2.env, &[10u8; 32]);
+    let evidence2 = BytesN::from_array(&ctx2.env, &[11u8; 32]);
+    ctx2.client().raise_dispute(&reason2, &evidence2);
+    must_panic(|| ctx2.client().resolve(&FallbackOutcome::Split, &0));
+    must_panic(|| ctx2.client().resolve(&FallbackOutcome::Split, &10000));
+    must_panic(|| ctx2.client().resolve(&FallbackOutcome::Split, &10001));
+    must_panic(|| ctx2.client().resolve(&FallbackOutcome::Release, &5000));
+    assert_eq!(ctx2.client().state(), EscrowState::Disputed);
+    assert_eq!(ctx2.token_balance(&ctx2.contract), AMOUNT);
+
+    let ctx3 = setup(true);
+    ctx3.to_attested_pass();
+    let reason3 = BytesN::from_array(&ctx3.env, &[10u8; 32]);
+    let evidence3 = BytesN::from_array(&ctx3.env, &[11u8; 32]);
+    ctx3.client().raise_dispute(&reason3, &evidence3);
+    ctx3.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    must_panic(|| ctx3.client().resolve(&FallbackOutcome::Refund, &0));
+}
+
+#[test]
+fn resolve_by_non_resolver_rejected() {
+    // Auth estricto: solo resolver puede resolver, buyer/supplier/engine no.
+    let ctx = setup(false);
+    let reason = BytesN::from_array(&ctx.env, &[10u8; 32]);
+    let evidence = BytesN::from_array(&ctx.env, &[11u8; 32]);
+    let init = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "initialize",
+        args: (ctx.config(),).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let pull = transfer_sub(
+        &ctx.token,
+        ctx.buyer.clone(),
+        ctx.contract.clone(),
+        AMOUNT,
+        &ctx.env,
+    );
+    let fund = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "fund",
+        args: soroban_sdk::Vec::new(&ctx.env),
+        sub_invokes: &[pull],
+    };
+    let submit = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "submit_evidence",
+        args: (evidence_hash(&ctx.env),).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let attest = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "attest",
+        args: (AttestationOutcome::Pass, report_hash(&ctx.env)).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let dispute = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "raise_dispute",
+        args: (reason.clone(), evidence.clone()).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let resolve_buyer = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "resolve",
+        args: (FallbackOutcome::Refund, 0u32).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let resolve_supplier = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "resolve",
+        args: (FallbackOutcome::Release, 0u32).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let resolve_engine = MockAuthInvoke {
+        contract: &ctx.contract,
+        fn_name: "resolve",
+        args: (FallbackOutcome::Split, 5000u32).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    let mint = MockAuthInvoke {
+        contract: &ctx.token,
+        fn_name: "mint",
+        args: (ctx.buyer.clone(), AMOUNT).into_val(&ctx.env),
+        sub_invokes: &[],
+    };
+    ctx.env.mock_auths(&[
+        MockAuth {
+            address: &ctx.token_admin,
+            invoke: &mint,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &init,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &fund,
+        },
+        MockAuth {
+            address: &ctx.supplier,
+            invoke: &submit,
+        },
+        MockAuth {
+            address: &ctx.engine,
+            invoke: &attest,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &dispute,
+        },
+        MockAuth {
+            address: &ctx.buyer,
+            invoke: &resolve_buyer,
+        },
+        MockAuth {
+            address: &ctx.supplier,
+            invoke: &resolve_supplier,
+        },
+        MockAuth {
+            address: &ctx.engine,
+            invoke: &resolve_engine,
+        },
+    ]);
+    ctx.sac().mint(&ctx.buyer, &AMOUNT);
+    ctx.initialize();
+    ctx.client().fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx.env));
+    ctx.client().raise_dispute(&reason, &evidence);
+    assert_eq!(ctx.client().state(), EscrowState::Disputed);
+    must_panic(|| ctx.client().resolve(&FallbackOutcome::Refund, &0));
+    must_panic(|| ctx.client().resolve(&FallbackOutcome::Release, &0));
+    must_panic(|| ctx.client().resolve(&FallbackOutcome::Split, &5000));
+    assert_eq!(ctx.client().state(), EscrowState::Disputed);
+    assert_eq!(ctx.token_balance(&ctx.contract), AMOUNT);
+}
+
+#[test]
+fn finalize_disputed_fallback_and_double_settlement_rejected() {
+    let ctx = setup(true);
+    let mut cfg = ctx.config();
+    cfg.fallback_outcome = FallbackOutcome::Split;
+    cfg.fallback_split_bps = 7000;
+    ctx.client().initialize(&cfg);
+    ctx.sac().mint(&cfg.buyer, &AMOUNT);
+    ctx.client().fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx.env));
+    ctx.client().raise_dispute(
+        &BytesN::from_array(&ctx.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx.env, &[11u8; 32]),
+    );
+    ctx.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Split);
+    let events = ctx.own_events();
+    assert!(events.iter().any(|e| *e
+        == Finalized {
+            reason: FinalizeReason::ResolutionTimeout
+        }
+        .to_xdr(&ctx.env, &ctx.contract)));
+    assert_eq!(ctx.token_balance(&ctx.supplier), AMOUNT * 7000 / 10_000);
+    assert_eq!(
+        ctx.token_balance(&ctx.buyer),
+        AMOUNT - AMOUNT * 7000 / 10_000
+    );
+
+    must_panic(|| ctx.client().resolve(&FallbackOutcome::Refund, &0));
+    must_panic(|| {
+        ctx.client().raise_dispute(
+            &BytesN::from_array(&ctx.env, &[10u8; 32]),
+            &BytesN::from_array(&ctx.env, &[11u8; 32]),
+        )
+    });
+    must_panic(|| ctx.client().approve());
+    must_panic(|| ctx.client().submit_evidence(&evidence_hash(&ctx.env)));
+}
+
+#[test]
+fn fallback_release_refund_split_and_rounding_large_amount_and_deadline_edges() {
+    // Fallback Release
+    let ctx = setup(true);
+    let mut cfg = ctx.config();
+    cfg.fallback_outcome = FallbackOutcome::Release;
+    cfg.fallback_split_bps = 0;
+    ctx.client().initialize(&cfg);
+    ctx.sac().mint(&cfg.buyer, &AMOUNT);
+    ctx.client().fund();
+    ctx.client().submit_evidence(&evidence_hash(&ctx.env));
+    ctx.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx.env));
+    ctx.client().raise_dispute(
+        &BytesN::from_array(&ctx.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx.env, &[11u8; 32]),
+    );
+    // deadline-1 no finalizable
+    ctx.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD - 1);
+    must_panic(|| {
+        ctx.client().finalize();
+    });
+    // deadline sí
+    ctx.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret = ctx.client().finalize();
+    assert_eq!(ret, EscrowState::Released);
+    assert_eq!(ctx.token_balance(&ctx.supplier), AMOUNT);
+    assert_eq!(ctx.token_balance(&ctx.buyer), 0);
+    // deadline+1 idempotente
+    assert_eq!(ctx.client().finalize(), EscrowState::Released);
+
+    // Fallback Refund
+    let ctx2 = setup(true);
+    let mut cfg2 = ctx2.config();
+    cfg2.fallback_outcome = FallbackOutcome::Refund;
+    cfg2.fallback_split_bps = 0;
+    ctx2.client().initialize(&cfg2);
+    ctx2.sac().mint(&cfg2.buyer, &AMOUNT);
+    ctx2.client().fund();
+    ctx2.client().submit_evidence(&evidence_hash(&ctx2.env));
+    ctx2.client()
+        .attest(&AttestationOutcome::Fail, &report_hash(&ctx2.env));
+    ctx2.client().raise_dispute(
+        &BytesN::from_array(&ctx2.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx2.env, &[11u8; 32]),
+    );
+    ctx2.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret2 = ctx2.client().finalize();
+    assert_eq!(ret2, EscrowState::Refunded);
+    assert_eq!(ctx2.token_balance(&ctx2.buyer), AMOUNT);
+
+    // Fallback Split redondeo: amount no divisible por 10000
+    let ctx3 = setup(true);
+    let mut cfg3 = ctx3.config();
+    cfg3.amount = 10_001; // no divisible
+    cfg3.fallback_outcome = FallbackOutcome::Split;
+    cfg3.fallback_split_bps = 3333; // 33.33%
+    ctx3.client().initialize(&cfg3);
+    ctx3.sac().mint(&cfg3.buyer, &10_001);
+    ctx3.client().fund();
+    ctx3.client().submit_evidence(&evidence_hash(&ctx3.env));
+    ctx3.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx3.env));
+    ctx3.client().raise_dispute(
+        &BytesN::from_array(&ctx3.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx3.env, &[11u8; 32]),
+    );
+    ctx3.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret3 = ctx3.client().finalize();
+    assert_eq!(ret3, EscrowState::Split);
+    let (s, b) = crate::calc_split_amounts(&ctx3.env, 10_001, 3333);
+    assert_eq!(s + b, 10_001, "conserva monto");
+    assert_eq!(ctx3.token_balance(&ctx3.supplier), s);
+    assert_eq!(ctx3.token_balance(&ctx3.buyer), b);
+
+    // Monto grande sin overflow: i128::MAX / 4
+    let large: i128 = i128::MAX / 4;
+    let ctx4 = setup(true);
+    let mut cfg4 = ctx4.config();
+    cfg4.amount = large;
+    cfg4.fallback_outcome = FallbackOutcome::Split;
+    cfg4.fallback_split_bps = 5000;
+    ctx4.client().initialize(&cfg4);
+    ctx4.sac().mint(&cfg4.buyer, &large);
+    ctx4.client().fund();
+    ctx4.client().submit_evidence(&evidence_hash(&ctx4.env));
+    ctx4.client()
+        .attest(&AttestationOutcome::Pass, &report_hash(&ctx4.env));
+    ctx4.client().raise_dispute(
+        &BytesN::from_array(&ctx4.env, &[10u8; 32]),
+        &BytesN::from_array(&ctx4.env, &[11u8; 32]),
+    );
+    ctx4.env
+        .ledger()
+        .set_timestamp(FUNDED_AT + RESOLUTION_PERIOD);
+    let ret4 = ctx4.client().finalize();
+    assert_eq!(ret4, EscrowState::Split);
+    let (s4, b4) = crate::calc_split_amounts(&ctx4.env, large, 5000);
+    assert_eq!(s4 + b4, large);
+    assert_eq!(ctx4.token_balance(&ctx4.supplier), s4);
+    assert_eq!(ctx4.token_balance(&ctx4.buyer), b4);
+
+    // resolve() con Split también usa función segura y conserva
+    let ctx5 = setup(true);
+    ctx5.to_attested_pass();
+    let r = BytesN::from_array(&ctx5.env, &[10u8; 32]);
+    let e = BytesN::from_array(&ctx5.env, &[11u8; 32]);
+    ctx5.client().raise_dispute(&r, &e);
+    ctx5.client().resolve(&FallbackOutcome::Split, &1);
+    assert_eq!(ctx5.token_balance(&ctx5.supplier), AMOUNT / 10_000); // 1 bps
+    assert_eq!(
+        ctx5.token_balance(&ctx5.buyer) + ctx5.token_balance(&ctx5.supplier),
+        AMOUNT
+    );
+}
+
+#[test]
+fn split_rounding_pins_actual_shares_with_independent_expectations() {
+    // El test anterior de redondeo comparaba el resultado de `calc_split_amounts`
+    // consigo mismo, asi que solo comprobaba que se conservara el monto: cualquier
+    // reparto que sumara el total pasaba. Aqui los valores esperados estan escritos a
+    // mano, de modo que un cambio en el reparto rompe el test y tiene que ser una
+    // decision consciente.
+    //
+    // Regla: supplier = (amount / 10_000) * bps + ((amount % 10_000) * bps) / 10_000,
+    // con division entera en los dos cortes; el resto se queda el buyer.
+    let casos: &[(i128, u32, i128, i128)] = &[
+        // amount divisible: el corte es limpio.
+        (10_000, 3_333, 3_333, 6_667),
+        // amount no divisible y resto que no alcanza para un punto entero.
+        (10_001, 3_333, 3_333, 6_668),
+        // amount menor que 10_000: la parte entera es 0 y decide solo el resto.
+        (999, 3_333, 332, 667),
+        // 1 bps sobre un monto pequeno: trunca a cero, el buyer se queda todo.
+        (12_345, 1, 1, 12_344),
+        // 1 bps sobre 10_000_000_000.
+        (10_000_000_000, 1, 1_000_000, 9_999_000_000),
+        // bps maximo sobre el monto minimo: el supplier no puede inventarse nada.
+        (1, 9_999, 0, 1),
+        // 0 bps y 10_000 bps: extremos exactos.
+        (10_000, 0, 0, 10_000),
+        (10_000, 10_000, 10_000, 0),
+    ];
+    for (amount, bps, want_supplier, want_buyer) in casos {
+        let (s, b) = crate::calc_split_amounts(&Env::default(), *amount, *bps);
+        assert_eq!(
+            (s, b),
+            (*want_supplier, *want_buyer),
+            "reparto inesperado para amount={amount} bps={bps}: supplier={s} buyer={b}"
+        );
+        assert_eq!(s + b, *amount, "no se crea ni se destruye monto");
+    }
+}
+
+#[test]
+fn split_of_a_very_large_amount_is_exact_and_conserves() {
+    // i128::MAX/4 multiplicado por 5000 desbordaria i128 si se calculara como
+    // amount * bps. Con el corte en dos, un split al 50% es exactamente la mitad.
+    let large: i128 = i128::MAX / 4;
+    let (s, b) = crate::calc_split_amounts(&Env::default(), large, 5_000);
+    assert_eq!(
+        s,
+        large / 2,
+        "al 50% el supplier se lleva la mitad truncada"
+    );
+    assert_eq!(b, large - s);
+    assert_eq!(s + b, large, "el monto se conserva integro");
+    assert!(s > 0 && b > 0, "ambas partes reciben algo");
+}
+
+#[test]
+fn split_never_moves_more_than_the_amount() {
+    // Invariante de seguridad: por como se componga la division, ninguna parte puede
+    // exceder el monto ni quedar negativa, para ningun bps valido.
+    let amounts: &[i128] = &[1, 7, 9_999, 10_000, 10_001, 1_000_000, i128::MAX / 8];
+    for amount in amounts {
+        for bps in [0u32, 1, 3_333, 5_000, 9_999, 10_000] {
+            let (s, b) = crate::calc_split_amounts(&Env::default(), *amount, bps);
+            assert!(s >= 0, "supplier negativo: amount={amount} bps={bps}");
+            assert!(b >= 0, "buyer negativo: amount={amount} bps={bps}");
+            assert!(
+                s <= *amount,
+                "supplier excede el monto: amount={amount} bps={bps}"
+            );
+            assert!(
+                b <= *amount,
+                "buyer excede el monto: amount={amount} bps={bps}"
+            );
+            assert_eq!(
+                s + b,
+                *amount,
+                "monto no conservado: amount={amount} bps={bps}"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
