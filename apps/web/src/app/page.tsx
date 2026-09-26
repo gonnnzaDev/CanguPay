@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CanguPayLogo,
   NetworkIcon,
@@ -26,6 +27,7 @@ import { fetchOnChainEscrow } from "@/lib/soroban";
 
 export default function Home() {
   const { t } = useLanguage();
+  const router = useRouter();
   const [activeScenario, setActiveScenario] = useState<EscrowStatus>("FUNDED");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -75,6 +77,14 @@ export default function Home() {
     const timer = setTimeout(() => void handleRefresh(), 0);
     return () => clearTimeout(timer);
   }, [contractId, handleRefresh]);
+
+  const handleLogoClick = useCallback(() => {
+    if (!isConnected) {
+      router.push("/landing");
+    } else {
+      void handleRefresh();
+    }
+  }, [isConnected, router, handleRefresh]);
 
   // A configured contract never falls back to preview data, even for partial RPC reads.
   const isMock = !contractId;
@@ -194,7 +204,15 @@ export default function Home() {
 
         <div className="pointer-events-auto relative z-10 max-w-5xl mx-auto px-4 sm:px-6 min-h-16 py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <CanguPayLogo className="h-7 sm:h-8 w-auto" />
+            <button
+              type="button"
+              onClick={handleLogoClick}
+              className="flex items-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 rounded-md p-0.5 -m-0.5 transition-opacity hover:opacity-85"
+              title={isConnected ? t("common.refresh") : "CanguPay Landing"}
+              aria-label={isConnected ? t("common.refresh") : "Ir a landing"}
+            >
+              <CanguPayLogo className="h-7 sm:h-8 w-auto" />
+            </button>
             <span className="hidden sm:inline-block text-neutral-300 dark:text-neutral-700 font-light">
               |
             </span>
