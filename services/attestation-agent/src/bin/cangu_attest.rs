@@ -196,9 +196,13 @@ impl Options {
 fn read_bundle(path: &PathBuf) -> Result<serde_json::Value> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| AgentError::Io(format!("no se pudo leer {}: {e}", path.display())))?;
-    serde_json::from_str(&text).map_err(|e| {
-        AgentError::BundleStructure(format!("{} no es JSON valido: {e}", path.display()))
-    })
+    // Parseo estricto: una clave duplicada se rechaza en vez de quedarse con la
+    // ultima en silencio, que terminaria firmando un bundle distinto del que el
+    // proveedor entrego. El hash de evidencia no lo detecta, porque se calcularia
+    // sobre el bundle ya normalizado.
+    attestation_agent::canonical::strict_loads(&text)
+        .map_err(|e| AgentError::BundleStructure(format!("{}: {e}", path.display())))
+        .map(|strict| strict.into_value())
 }
 
 fn selfcheck(opts: &Options) -> Result<ExitCode> {

@@ -26,6 +26,14 @@ pub enum AgentError {
     #[error("configuracion invalida: {0}")]
     Config(String),
 
+    /// La configuracion local del agente no coincide con la del contrato.
+    ///
+    /// Se contrasta antes de firmar: el importe y la divisa son los del contrato, no
+    /// los que vinieron por linea de comandos. Firmar contra un importe distinto al
+    /// que el contrato tiene en cadena produce una atestacion que no describe el escrow.
+    #[error("la configuracion local no coincide con el contrato: {0}")]
+    ContractConfigMismatch(String),
+
     /// La clave del engine no debe vivir dentro del repositorio.
     #[error(
         "la clave del engine esta dentro del repositorio ({path}); moverla fuera (regla P0-07)"
@@ -68,6 +76,7 @@ impl AgentError {
             | Self::InvalidState { .. }
             | Self::DeadlinePassed { .. }
             | Self::Config(_)
+            | Self::ContractConfigMismatch(_)
             | Self::EngineKeyInsideRepo { .. } => exit::REJECT,
             Self::Network(_) | Self::Xdr(_) | Self::Io(_) => exit::INFRA,
         }

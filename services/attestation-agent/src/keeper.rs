@@ -128,12 +128,12 @@ fn load_bundle(config: &KeeperConfig) -> Result<(serde_json::Value, String)> {
             config.bundle_path.display()
         ))
     })?;
-    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
-        AgentError::BundleStructure(format!(
-            "{} no es JSON valido: {e}",
-            config.bundle_path.display()
-        ))
-    })?;
+    // Parseo estricto: rechaza claves duplicadas. `serde_json::from_str` las
+    // aceptaria en silencio, quedandose con la ultima, y el hash se calcularia
+    // sobre un bundle que el proveedor nunca vio.
+    let value = crate::canonical::strict_loads(&text)
+        .map_err(|e| AgentError::BundleStructure(format!("{}: {e}", config.bundle_path.display())))?
+        .into_value();
     let report = build_report(&value, config.expected_amount, &config.expected_currency)?;
     Ok((value, report.evidence_bundle_hash))
 }
@@ -254,11 +254,34 @@ fn try_finalize(chain: &dyn ChainClient, snapshot: &EscrowSnapshot) -> Result<Op
     Ok(Some(chain.finalize()?))
 }
 
+/// Comprueba que la configuracion local describa el mismo escrow que la cadena.
+///
+/// El importe y la divisa son los del contrato. Si el operador paso otros valores por
+/// linea de comandos, se rechaza en vez de evaluar contra ellos: un bundle puede ser
+/// coherente consigo mismo y aun asi corresponder a otro importe, y en ese caso el
+/// hash de evidencia coincidiria mientras la atestacion no describe el escrow.
+fn check_matches_contract(config: &KeeperConfig, snapshot: &EscrowSnapshot) -> Result<()> {
+    if config.expected_amount != snapshot.config.amount {
+        return Err(AgentError::ContractConfigMismatch(format!(
+            "importe local {} != importe del contrato {}",
+            config.expected_amount, snapshot.config.amount
+        )));
+    }
+    if config.expected_currency != snapshot.config.token {
+        return Err(AgentError::ContractConfigMismatch(format!(
+            "token local {} != token del contrato {}",
+            config.expected_currency, snapshot.config.token
+        )));
+    }
+    Ok(())
+}
+
 /// Lee el contrato y el bundle, y decide si tiene sentido atestar.
 ///
 /// Es la parte sin efectos: no firma nada y no necesita la clave del engine.
 pub fn observe(chain: &dyn ChainClient, config: &KeeperConfig) -> Result<Observation> {
     let snapshot = chain.snapshot()?;
+    check_matches_contract(config, &snapshot)?;
 
     if snapshot.state != EscrowState::EvidenceSubmitted {
         return Ok(Observation::Waiting {
@@ -621,7 +644,9 @@ mod tests {
                 state,
                 config: EscrowConfigView {
                     engine: self.engine.clone(),
-                    token: "CDUMMY".into(),
+                    // Coherente con `config.expected_currency` de los tests: la
+                    // validacion contra el contrato rechaza cualquier otro token.
+                    token: "CPUSD".into(),
                     amount: 1000,
                     attestation_period: 3600,
                     fallback_outcome: 2,
@@ -673,8 +698,21 @@ mod tests {
         }
     }
 
+    /// Escribe un bundle temporal y devuelve su ruta.
+    ///
+    /// Cada test y cada ejecucion del binario de pruebas reciben un directorio
+    /// propio. Compartir `temp_dir()/cangupay-p07-keeper` hacia que dos
+    /// `cargo test` en paralelo, o dos hilos del mismo proceso, se escribieran
+    /// encima el archivo del otro y el fallo apareciera en el test que no lo
+    ///provinaba.
     fn bundle_path(name: &str, amount: i64) -> PathBuf {
-        let dir = std::env::temp_dir().join("cangupay-p07-keeper");
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "cangupay-p07-keeper-{}-{unique}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(format!("{name}.json"));
         let value = serde_json::json!({
@@ -1049,5 +1087,129 @@ mod tests {
             .steps
             .iter()
             .any(|s| matches!(s, KeeperStep::Finalized { .. })));
+    }
+
+    // --- Validacion contra el contrato: importe y token -----------------------
+
+    #[test]
+    fn a_local_amount_that_is_not_the_contracts_is_rejected() {
+        // El caso que el hash de evidencia no detecta: un bundle coherente con un
+        // importe que no es el del escrow. Aqui el hash pasaria igual.
+        let path = bundle_path("wrong-amount", 999);
+        let chain = FakeChain::new(EscrowState::EvidenceSubmitted, None);
+        let mut cfg = config(&path);
+        // El doble declara amount 1000; aqui se afirma que el escrow es de 999.
+        cfg.expected_amount = 999;
+        let err = observe(&chain, &cfg).unwrap_err();
+        assert!(
+            matches!(err, AgentError::ContractConfigMismatch(_)),
+            "esperaba rechazo por config, dio {err}"
+        );
+        assert!(format!("{err}").contains("999"), "{err}");
+        assert!(chain.submitted.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_local_currency_that_is_not_the_contracts_token_is_rejected() {
+        let path = bundle_path("wrong-token", 1000);
+        let chain = FakeChain::new(EscrowState::EvidenceSubmitted, None);
+        let mut cfg = config(&path);
+        cfg.expected_currency = "USDC".into();
+        let err = observe(&chain, &cfg).unwrap_err();
+        assert!(
+            matches!(err, AgentError::ContractConfigMismatch(_)),
+            "esperaba rechazo por config, dio {err}"
+        );
+        assert!(format!("{err}").contains("USDC"), "{err}");
+    }
+
+    #[test]
+    fn a_matching_amount_and_token_pass_the_contract_check() {
+        // El camino feliz de la validacion: no debe rechazar cuando coincide.
+        let path = bundle_path("aligned", 1000);
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let report = build_report(&value, 1000, "CPUSD").unwrap();
+        assert_eq!(report.escrow_amount, 1000);
+        assert_eq!(report.token_code, "CPUSD");
+        let chain = FakeChain::new(
+            EscrowState::EvidenceSubmitted,
+            Some(crate::attest::hash_bytes(&report.evidence_bundle_hash)),
+        );
+        let obs = observe(&chain, &config(&path)).unwrap();
+        assert!(matches!(obs, Observation::Ready(_)), "debia quedar listo");
+    }
+
+    #[test]
+    fn the_report_records_the_amount_it_was_built_with() {
+        // Sin esto el motor no puede saber con que importe evaluo, y el hash de
+        // evidencia no lo dice.
+        let path = bundle_path("records", 777);
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let report = build_report(&value, 777, "CPUSD").unwrap();
+        assert_eq!(report.escrow_amount, 777);
+        assert_eq!(report.token_code, "CPUSD");
+    }
+
+    // --- JSON estricto: clave duplicada rechazada antes de firmar -------------
+
+    /// Escribe un bundle con `extra` repetido dentro de un objeto, que es la
+    /// forma en que una clave duplicada se cuela en un bundle real.
+    fn bundle_with_duplicate_key() -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("cangupay-p07-dup-{}-{unique}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("duplicate.json");
+        // "amount" aparece dos veces en `invoice`. serde_json se quedaria con la
+        // segunda; el motor firmaria un bundle que nadie reviso.
+        let text = r#"{
+          "purchase_order": {"id":"PO-1","supplier_id":"SUP-1","amount":1000,"currency":"CPUSD"},
+          "invoice": {"id":"INV-1","purchase_order_id":"PO-1","supplier_id":"SUP-1",
+                      "amount":1000,"amount":1,"currency":"CPUSD"},
+          "delivery": {"purchase_order_id":"PO-1","accepted":true}
+        }"#;
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_duplicate_key_in_the_bundle_is_rejected_before_any_signature() {
+        let path = bundle_with_duplicate_key();
+        // Lo que aceptaba serde_json::from_str: se queda con el ultimo valor.
+        let laxo: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            laxo["invoice"]["amount"], 1,
+            "serde_json se queda con la ultima"
+        );
+
+        let chain = FakeChain::new(EscrowState::EvidenceSubmitted, None);
+        let err = observe(&chain, &config(&path)).unwrap_err();
+        assert!(
+            matches!(err, AgentError::BundleStructure(_)),
+            "esperaba rechazo de estructura, dio {err}"
+        );
+        // Lo importante: no se firmo nada.
+        assert!(chain.submitted.lock().unwrap().is_empty());
+        assert_eq!(
+            *chain.calls.lock().unwrap(),
+            1,
+            "solo una lectura, sin bucles"
+        );
+    }
+
+    #[test]
+    fn a_duplicate_key_never_reaches_a_report() {
+        // Si el bundle llegara al motor, el hash se calcularia sobre el bundle
+        // normalizado y la firma seria legitima sobre algo que el proveedor no
+        // entrego. Tiene que morir antes.
+        let path = bundle_with_duplicate_key();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let strict = crate::canonical::strict_loads(&text);
+        assert!(strict.is_err(), "el parser estricto tiene que rechazar");
     }
 }

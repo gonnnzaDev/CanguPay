@@ -74,6 +74,17 @@ pub fn plan_attestation(
             on_chain: hex::encode(on_chain),
         });
     }
+    // El hash demuestra que se evaluo el bundle que subio el proveedor, pero no que
+    // ese bundle se evaluara contra *este* escrow. Un bundle puede ser coherente
+    // consigo mismo y llevar un importe que no es el del contrato: el hash pasaria
+    // y la atestacion seria de otro importe. La cadena es la referencia.
+    if report.escrow_amount != snapshot.config.amount {
+        return Err(AgentError::Config(format!(
+            "el importe evaluado ({}) no es el del contrato ({}); \
+             se evalua contra la cadena, no contra la configuracion local",
+            report.escrow_amount, snapshot.config.amount
+        )));
+    }
     signer.ensure_matches_contract_engine(&snapshot.config.engine)?;
 
     Ok(AttestationPlan {

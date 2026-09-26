@@ -30,6 +30,15 @@ pub struct Report {
     pub checks: Vec<(String, Status)>,
     /// Campos que fallaron, con su valor observado y el esperado solo si existe en los datos.
     pub failed_fields: Vec<FieldReport>,
+    /// Importe del escrow con el que se evaluo, en unidades minimas.
+    ///
+    /// Se registra para poder contrastarlo con el importe que tiene el contrato en
+    /// cadena. Un bundle puede ser coherente consigo mismo y aun asi no corresponder
+    /// al escrow: sin este campo el motor firmaria un PASS contra un importe que
+    /// nadie le dijo.
+    pub escrow_amount: i128,
+    /// Codigo de la divisa con la que se evaluo.
+    pub token_code: String,
 }
 
 impl Report {
@@ -115,11 +124,21 @@ pub fn build_report(
 ) -> Result<Report> {
     let evidence_bundle_hash = compute_evidence_bundle_hash(bundle);
     let evaluation = crate::ruleset::evaluate_bundle(bundle, escrow_amount, escrow_token_code)?;
-    Ok(finalize_report(evaluation, evidence_bundle_hash))
+    Ok(finalize_report(
+        evaluation,
+        evidence_bundle_hash,
+        escrow_amount,
+        escrow_token_code,
+    ))
 }
 
 /// Convierte una evaluacion en reporte, calculando `report_hash` y `detail_hash`.
-pub fn finalize_report(evaluation: Evaluation, evidence_bundle_hash: String) -> Report {
+pub fn finalize_report(
+    evaluation: Evaluation,
+    evidence_bundle_hash: String,
+    escrow_amount: i128,
+    token_code: &str,
+) -> Report {
     let checks: Vec<(String, Status)> = evaluation
         .checks
         .iter()
@@ -169,6 +188,8 @@ pub fn finalize_report(evaluation: Evaluation, evidence_bundle_hash: String) -> 
         detail_hash,
         checks,
         failed_fields,
+        escrow_amount,
+        token_code: token_code.to_owned(),
     }
 }
 
