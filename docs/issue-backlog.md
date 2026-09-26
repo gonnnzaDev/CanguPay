@@ -188,7 +188,24 @@ Llegar ahi exigio corregir cuatro cosas que solo se manifiestan contra la red, n
 3. Los `struct` vuelven como `Map` por nombre y los enums como `Vec[Symbol]`. El decodificador los leia posicionalmente.
 4. Los errores de `simulateTransaction` llegan en un campo `error` con HTTP 200; sin mirarlo, el sintoma era "no devolvio resultados".
 
-Ademas, el toolchain paso a `stellar-xdr 28` y `stellar-rpc-client 28` para hablar con un nodo en protocolo 28.
+Ademas, el toolchain completo paso a protocolo 28: `soroban-sdk 28`, `stellar-xdr 28` y
+`stellar-rpc-client 28`. Con SDK 27 el contrato funcionaba en un nodo de protocolo 28,
+pero es una mezcla fragil; ahora contrato, RPC y XDR son de la misma version. El WASM
+baja de 43 KB a 21 KB y **exige** `stellar contract build`: `cargo build --target
+wasm32v1-none` ya no basta y falla con un error explicito.
+
+Con el toolchain unificado se verificaron en testnet los cuatro caminos del agente:
+
+| Camino | Contrato | Resultado |
+| --- | --- | --- |
+| `attest` PASS | `CCGZQCVPZPJLTTD4NSCL7MZWFH6PKFAAZCSGXCPZH7ZEB7T56L2WJ2OF` | tx `f7168ae3e3c0f4e7cf59bc66353f7d9f3e24510043144dcf4864b2f003e1976f` |
+| `attest` FAIL | `CCQ7XTWYMGKMTBPJ5UIJ764GDQX7ZE2HYSZ3EPW4XUELSC7755SPNJ7A` | tx `bb714f80fe2acc5f6b8192fd5ec106a90c3fada9f4102767a72619a12c9f872d` |
+| `keeper` atesta solo | `CDUEGOAJXOG5VD6M4I7SMVEV2S6MNAQKBPOWUY5UZQ7AJIN6U7Q4OHEU` | tx `abc981745d898e23190a8e46758508b1b5bd438fff38b1a8f77ac45613623e52` |
+| `finalize` con fallback split 3333 | `CB6SQ2N2IWDS36HVDF7CXB2RPVJVJLCYEKERR5EOCEEJR656F7TH4OJY` | `Split` con reparto 3 333 000 000 / 6 667 000 000 |
+| `keeper --finalize` liquida solo | `CD4GXNR7F5MSFZGJ6SMMNRXTICTUYRRM2UV5UNDKXZXDW3ORKR275YXD` | `Refunded` por fallback |
+
+Los cinco con contratos compilados con SDK 28. El reparto del fallback coincide al
+stroop con los valores que fijan los tests de reparto.
 
 ### P0-08 — Inicializar web, red y wallet
 

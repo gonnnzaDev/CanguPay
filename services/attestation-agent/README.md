@@ -131,6 +131,20 @@ todas pasan en local y fallan contra la red:
 Y el toolchain paso a `stellar-xdr 28` y `stellar-rpc-client 28` para hablar con un
 nodo en protocolo 28.
 
+Todo el toolchain esta en protocolo 28 (`soroban-sdk 28`, `stellar-xdr 28`,
+`stellar-rpc-client 28`). SDK 27 tambien funcionaba contra un nodo de protocolo 28, pero
+es una mezcla fragile. Con SDK 28 el WASM **exige** `stellar contract build`; `cargo
+build --target wasm32v1-none` falla con un error explicito que lo dice.
+
+Los cuatro caminos del agente verificados con el toolchain unificado:
+
+| Camino | Resultado |
+| --- | --- |
+| `attest` PASS y FAIL | tx `f7168ae3…` y `bb714f80…`, `report_hash` confirmado en cadena |
+| `keeper` | detecta la evidencia y atesta solo, tx `abc98174…` |
+| `finalize` | fallback split 3333 con reparto 3 333 000 000 / 6 667 000 000 |
+| `keeper --finalize` | detecta el vencimiento y liquida solo, estado `Refunded` |
+
 El token de los escrows de prueba es un contrato de prueba, **no CPUSD**: en testnet no
 hay un SAC desplegado para una divisa de prueba y `fund()` necesita uno.
 

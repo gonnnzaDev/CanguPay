@@ -312,6 +312,14 @@ impl ChainClient for SorobanChain {
             .map_err(|e| AgentError::Network(format!("runtime: {e}")))?;
         rt.block_on(self.submit_attestation_async(outcome, report_hash))
     }
+
+    fn finalize(&self) -> Result<EscrowState> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| AgentError::Network(format!("runtime: {e}")))?;
+        rt.block_on(self.finalize_async())
+    }
 }
 
 impl SorobanChain {
@@ -690,10 +698,10 @@ pub(crate) fn state_from_simulation(
         .next()
         .ok_or_else(|| AgentError::Network("la simulacion no devolvio resultados".into()))?;
     match &result.xdr {
-        ScVal::U32(v) => Ok(Some(EscrowState::from_u32(*v))),
         // Una funcion que no devuelve nada es valido; quien llama decide si lo esperaba.
         ScVal::Void => Ok(None),
-        other => Err(AgentError::Xdr(format!("estado inesperado: {other:?}"))),
+        // El enum vuelve por nombre, igual que cuando se manda por argumento.
+        other => decode_state(other).map(Some),
     }
 }
 

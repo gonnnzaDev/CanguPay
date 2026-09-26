@@ -40,6 +40,7 @@ Opciones:
   --rpc <url>            endpoint RPC (o CANGUPA_RPC_URL)
   --network <pass>       passphrase de red (o CANGUPA_NETWORK)
   --poll <segundos>      espera del keeper, por defecto 10
+  --max-iterations <n>   tope de vueltas del keeper; sin limite vigila para siempre
   --finalize             el keeper tambien llama a finalize() al detectar un vencimiento
   --json                 salida en JSON
   -h, --help             esta ayuda
@@ -86,6 +87,7 @@ struct Options {
     rpc: Option<String>,
     network: Option<String>,
     poll: u64,
+    max_iterations: Option<u64>,
     finalize: bool,
     json: bool,
 }
@@ -100,6 +102,7 @@ impl Options {
             rpc: None,
             network: None,
             poll: 10,
+            max_iterations: None,
             finalize: false,
             json: false,
         };
@@ -129,6 +132,12 @@ impl Options {
                     opts.poll = raw
                         .parse::<u64>()
                         .map_err(|_| AgentError::Config("--poll debe ser un entero".into()))?;
+                }
+                "--max-iterations" => {
+                    let raw = value()?;
+                    opts.max_iterations = Some(raw.parse::<u64>().map_err(|_| {
+                        AgentError::Config("--max-iterations debe ser un entero".into())
+                    })?);
                 }
                 "--finalize" => opts.finalize = true,
                 "--json" => opts.json = true,
@@ -320,7 +329,7 @@ fn keep(opts: &Options) -> Result<ExitCode> {
         expected_amount: amount,
         expected_currency: opts.currency.clone(),
         poll_interval: std::time::Duration::from_secs(opts.poll),
-        max_iterations: None,
+        max_iterations: opts.max_iterations,
         // El contrato conserva la autoridad sobre los vencimientos: el keeper solo
         // llama a `finalize()` cuando cree que se cumple uno, y es el contrato el
         // que decide si lo es.
