@@ -6,15 +6,26 @@ El comprador reserva fondos en Stellar, el proveedor presenta la evidencia acord
 
 > *El agente informa; el contrato ejecuta; el humano resuelve controversias.*
 
-> Nombre elegido por el equipo; el chequeo de marca y dominio sigue pendiente (ver `docs/decision-log.md`).
+> Nombre de trabajo del equipo. Chequeo preliminar de marca y dominio hecho el 25-09-2026 (búsqueda general, RDAP `.com`, DNS): sin coincidencias confundibles, dominios `cangupay.*` sin registrar. No equivale a clearance legal (ver D-006 en `docs/decision-log.md`).
 
 ## ⚠️ Declaraciones
 
 - **CPUSD es un activo sintético de testnet utilizado exclusivamente para demostrar el flujo. No representa USDC ni tiene respaldo en dólares.** USDC en mainnet queda en el roadmap.
 - **Doble participación:** una misma solución base compite en Stellar Odyssey Perú (Track 01 — AI Agents & Automated Workflows) y en Argentina Builder Challenge (Genesis — Pagos). Ambas participaciones están declaradas.
-- **Khipu** es aprendizaje previo del equipo. Este repositorio es nuevo y no reutiliza código, fixtures ni archivos de Khipu.
-- **Sin validación comercial:** es un prototipo basado en experiencia operativa, investigación secundaria e hipótesis explícitas.
+- **Khipu — antecedentes:** es aprendizaje previo del equipo. Este repositorio es **código nuevo** y no reutiliza código, fixtures ni archivos de Khipu.
+- **Sin validación comercial:** es un prototipo basado en experiencia operativa, investigación secundaria e hipótesis explícitas. Cero respuestas registradas: los tres mensajes de validación asincrónica aún no se enviaron ([validation-log](docs/validation-log.md)).
 - Todos los documentos de la demo son **sintéticos**. No es asesoría legal, ni producción, ni factoring, ni RWA.
+
+## Fuente de verdad
+
+| Qué | Dónde |
+|---|---|
+| Plan P0/P1, dueños y criterios de "terminado" | [`docs/issue-backlog.md`](docs/issue-backlog.md) · [issues en GitHub](https://github.com/gonnnzaDev/CanguPay/issues) |
+| Decisiones y su estado (D-001…) | [`docs/decision-log.md`](docs/decision-log.md) |
+| Reglas documentales, hashes y precisión | [`docs/ruleset.md`](docs/ruleset.md) |
+| Máquina de estados y plazos | [`docs/state-machine.md`](docs/state-machine.md) |
+| Validación de mercado (sin respuestas aún) | [`docs/validation-log.md`](docs/validation-log.md) |
+| Escenarios de demo | [`docs/demo-scenarios.md`](docs/demo-scenarios.md) · guion en [`docs/pitch-script.md`](docs/pitch-script.md) |
 
 ## Problema
 
@@ -51,9 +62,9 @@ Los roles deben ser cuentas distintas entre sí.
 | Componente | Tecnología |
 |---|---|
 | Contrato | Rust / Soroban (una instancia por operación) |
-| Agente + keeper | Por acordar en P0-00; actualmente hay un stub Rust y un verificador Python local |
+| Agente + keeper | Rust (D-007); hoy hay stubs y un verificador Python local de reglas |
 | Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS v4, @stellar/freighter-api |
-| Activo | CPUSD en testnet vía Stellar Asset Contract |
+| Activo | CPUSD en testnet vía Stellar Asset Contract (`decimals()=7`) |
 
 El tiempo lo decide siempre `env.ledger().timestamp()`, nunca el reloj del navegador.
 
@@ -82,7 +93,7 @@ Usá **tres perfiles de navegador** con Freighter (buyer, supplier, resolver) pa
 2. **Ghost supplier** (respaldo): el proveedor desaparece y el comprador recupera los fondos.
 3. **Disputa + split 70/30:** el resolver decide y el contrato distribuye exactamente.
 
-Las demos usan plazos abreviados. Ver `docs/demo-scenarios.md`.
+Las demos usan plazos abreviados. Guion de presentación en [`docs/pitch-script.md`](docs/pitch-script.md); pasos de reproducción en `docs/demo-scenarios.md` (por escribir en P0-11).
 
 ## Limitaciones
 
@@ -93,14 +104,28 @@ Las demos usan plazos abreviados. Ver `docs/demo-scenarios.md`.
 
 ## Alcance
 
-**P0:** flujo completo en testnet (contrato, agente determinista, frontend, tests, video).
+**P0:** flujo completo en testnet (contrato, agente determinista, frontend, tests, video). Detalle, dueños y criterios en [`docs/issue-backlog.md`](docs/issue-backlog.md) y en [los issues #2–#14](https://github.com/gonnnzaDev/CanguPay/issues).
 **P1:** IA/OCR, múltiples hitos, engine redundante, segundo resolver, fees, factory multi-escrow.
 **Fuera:** factoring, RWA, yield, préstamos, KYC, ERP, mainnet.
 
+## Demo, testnet y video
+
+> ⏳ **Pendiente (P0-11).** Este bloque queda reservado para los enlaces verificables cuando la demo corra en testnet.
+
+- **Contrato (testnet):** `_[contract id pendiente]_`
+- **Transacciones de las tres demos:** `_[tx hashes pendientes]_`
+- **Explorer:** `_[enlace a explore.stellar.org testnet, pendiente]_`
+- **Video:** `_[enlace pendiente]_`
+- **Cómo repetir la demo:** `docs/demo-scenarios.md` (contenido pendiente de P0-11)
+
+Mientras esos campos estén vacíos, no se afirma que la demo haya corrido on-chain.
+
 ## Equipo
 
-**Gonza** (contrato y testnet) · **Julián** (frontend e integración) · **Linder** (producto, agente, evidencia y presentación)
+**Gonza** ([@gonnnzaDev](https://github.com/gonnnzaDev)) — contrato y testnet · **Julián** ([@Julianv3534](https://github.com/Julianv3534)) — frontend e integración · **Linder** — producto, agente, evidencia y presentación · **Rendo(ForLess01)** — frontend/integración (pareja de Julián en P0-08)
+
+Equipo de 4 en ambas competencias; elegibilidad registrada en D-008 de [`docs/decision-log.md`](docs/decision-log.md).
 
 ## Licencia
 
-Ver `LICENSE` *(TODO: definir antes de publicar)*.
+MIT — ver [`LICENSE`](LICENSE).
