@@ -1,5 +1,4 @@
-//! Pruebas de aceptación P0-03.
-//!
+
 //! Cubren el camino feliz `CREATED → FUNDED → EVIDENCE_SUBMITTED →
 //! ATTESTED_PASS → RELEASED`, el de fallo (`ATTESTED_FAIL` retiene fondos),
 //! `CREATED → CANCELLED`, más las reglas de negocio: fondeo por pull atómico,
